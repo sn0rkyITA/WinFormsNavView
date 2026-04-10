@@ -1,7 +1,7 @@
 # 🧭 NavigationView per WinForms (WinFormsNavView)
 WinUI3-style NavigationView control for WinForms (.NET 10)
 
-![.NET](https://img.shields.io/badge/.NET-6%2B-blue)
+![.NET](https://img.shields.io/badge/.NET-10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![WinForms](https://img.shields.io/badge/UI-WinForms-orange)
 
