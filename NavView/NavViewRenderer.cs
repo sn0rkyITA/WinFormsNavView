@@ -5,9 +5,6 @@
 // Il controllo NavigationView chiama questi metodi passando il Graphics
 // corrente; non conosce i dettagli del rendering.
 
-using System;
-using System.Collections.Generic;
-using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 
@@ -41,13 +38,13 @@ namespace NavView
         public const float IconFontSize = 16f;
 
         /// <summary>Dimensione testo label voce in pt.</summary>
-        public const float LabelFontSize = 13f;
+        public const float LabelFontSize = 10f;
 
         /// <summary>Dimensione testo AppTitle in pt.</summary>
         public const float AppTitleFontSize = 13f;
 
         /// <summary>Dimensione testo ContentHeader in pt.</summary>
-        public const float ContentHeaderFontSize = 20f;
+        public const float ContentHeaderFontSize = 14f;
 
         /// <summary>Dimensione testo group header in pt.</summary>
         public const float GroupHeaderFontSize = 11f;

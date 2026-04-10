@@ -1,13 +1,7 @@
 ﻿// NavigationView.cs
 // Controllo principale. Gestisce layout, hit testing, eventi mouse,
 // selezione, espansione accordion, cambio tema, SetContent.
-
-using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing;
-using System.Windows.Forms;
-
 namespace NavView
 {
     /// <summary>
@@ -20,7 +14,6 @@ namespace NavView
         // -------------------------------------------------------------------------
         // Campi privati
         // -------------------------------------------------------------------------
-
         private NavViewRenderer _renderer;
         private NavViewTheme _theme = NavViewTheme.Light;
         private PaneDisplayMode _displayMode = PaneDisplayMode.LeftCompact;
@@ -33,11 +26,10 @@ namespace NavView
         private NavItem? _hoveredItem;
         private Control? _content;
 
-        // Larghezza corrente del pane (animazione futura: valore interpolato)
+        // Larghezza corrente del pane
         private int _currentPaneWidth;
 
         // Lista piatta delle voci visibili, con i Bounds calcolati.
-        // Ricalcolata a ogni layout change.
         private readonly List<RendererItemInfo> _visibleItems = new();
 
         // Traccia se il mouse è sull'hamburger
@@ -47,18 +39,12 @@ namespace NavView
         // -------------------------------------------------------------------------
         // Collezioni pubbliche
         // -------------------------------------------------------------------------
-
-        /// <summary>Voci principali del pannello (parte superiore).</summary>
         public NavItemCollection MenuItems { get; } = new NavItemCollection();
-
-        /// <summary>Voci footer del pannello (parte inferiore: Settings, ecc.).</summary>
         public NavItemCollection FooterMenuItems { get; } = new NavItemCollection();
 
         // -------------------------------------------------------------------------
         // Proprietà pubbliche
         // -------------------------------------------------------------------------
-
-        /// <summary>Testo mostrato nell'header del pane accanto all'hamburger.</summary>
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string AppTitle
@@ -67,7 +53,6 @@ namespace NavView
             set { _appTitle = value ?? string.Empty; Invalidate(); }
         }
 
-        /// <summary>Titolo dell'area contenuto (mostrato sopra il ContentArea).</summary>
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string ContentHeader
@@ -76,7 +61,6 @@ namespace NavView
             set { _contentHeader = value ?? string.Empty; Invalidate(); }
         }
 
-        /// <summary>Modalità di visualizzazione del pane.</summary>
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public PaneDisplayMode PaneDisplayMode
@@ -85,7 +69,6 @@ namespace NavView
             set { _displayMode = value; UpdatePaneState(); }
         }
 
-        /// <summary>True se il pane è espanso.</summary>
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public bool IsPaneOpen
@@ -94,7 +77,6 @@ namespace NavView
             set { if (_isPaneOpen != value) TogglePane(); }
         }
 
-        /// <summary>Larghezza del pane quando espanso.</summary>
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public int PaneWidth
@@ -103,7 +85,6 @@ namespace NavView
             set { _paneWidth = Math.Max(100, value); RecalcLayout(); }
         }
 
-        /// <summary>Larghezza del pane in modalità compatta (solo icone).</summary>
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public int CompactPaneWidth
@@ -112,7 +93,6 @@ namespace NavView
             set { _compactWidth = Math.Max(32, value); RecalcLayout(); }
         }
 
-        /// <summary>Tema visivo corrente.</summary>
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public NavViewTheme Theme
@@ -121,20 +101,14 @@ namespace NavView
             set
             {
                 _theme = value;
-                _renderer.Colors = value == NavViewTheme.Dark
-                    ? NavViewColors.Dark()
-                    : NavViewColors.Light();
+                _renderer.Colors = value == NavViewTheme.Dark ? NavViewColors.Dark() : NavViewColors.Light();
                 Invalidate();
             }
         }
 
-        /// <summary>Voce attualmente selezionata. Null se nessuna.</summary>
         [Browsable(false)]
         public NavItem? SelectedItem => _selectedItem;
 
-        /// <summary>
-        /// Renderer corrente. Sostituibile con implementazione custom.
-        /// </summary>
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public INavViewRenderer Renderer
@@ -151,35 +125,18 @@ namespace NavView
         // -------------------------------------------------------------------------
         // Eventi pubblici
         // -------------------------------------------------------------------------
-
-        /// <summary>Sollevato quando la voce selezionata cambia.</summary>
         public event EventHandler<NavSelectionChangedEventArgs>? SelectionChanged;
-
-        /// <summary>Sollevato quando il pane si apre.</summary>
         public event EventHandler? PaneOpened;
-
-        /// <summary>Sollevato quando il pane si chiude.</summary>
         public event EventHandler? PaneClosed;
 
-        // -------------------------------------------------------------------------
-        // Interfaccia keyboard (predisposta, non implementata in v1)
-        // -------------------------------------------------------------------------
-
-        /// <summary>
-        /// Predisposto per navigazione da tastiera futura.
-        /// Sovrascrivere per implementare Tab/Frecce/Enter.
-        /// </summary>
         protected virtual void OnKeyboardNavigate(Keys key) { }
 
         // -------------------------------------------------------------------------
         // Costruttore
         // -------------------------------------------------------------------------
-
         public NavigationView()
         {
             _renderer = new NavViewRenderer();
-
-            // Stile controllo: doppio buffer per evitare flickering GDI+
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.UserPaint |
@@ -188,23 +145,14 @@ namespace NavView
                 true);
 
             UpdateCursor();
-
-            // Collega gli eventi delle collezioni
             MenuItems.CollectionChanged += OnCollectionChanged;
             FooterMenuItems.CollectionChanged += OnCollectionChanged;
-
-            // Larghezza pane iniziale
             _currentPaneWidth = _compactWidth;
         }
 
         // -------------------------------------------------------------------------
         // API pubblica
         // -------------------------------------------------------------------------
-
-        /// <summary>
-        /// Imposta il controllo da mostrare nell'area contenuto.
-        /// Il controllo viene ridimensionato per occupare tutto il ContentArea.
-        /// </summary>
         public void SetContent(Control? control)
         {
             if (_content != null)
@@ -212,9 +160,7 @@ namespace NavView
                 Controls.Remove(_content);
                 _content = null;
             }
-
             _content = control;
-
             if (_content != null)
             {
                 _content.TabStop = true;
@@ -223,23 +169,18 @@ namespace NavView
             }
         }
 
-        /// <summary>Seleziona una voce per riferimento.</summary>
         public void Navigate(NavItem item)
         {
             if (item == null || !item.IsSelectable) return;
             SelectItem(item);
         }
 
-        /// <summary>Seleziona una voce per Id.</summary>
         public void Navigate(string itemId)
         {
-            var item = FindById(itemId,
-                MenuItems.Flatten()) ??
-                FindById(itemId, FooterMenuItems.Flatten());
+            var item = FindById(itemId, MenuItems.Flatten()) ?? FindById(itemId, FooterMenuItems.Flatten());
             if (item != null) Navigate(item);
         }
 
-        /// <summary>Chiude tutti i nodi accordion aperti.</summary>
         public void CollapseAll()
         {
             CollapseCollection(MenuItems);
@@ -249,16 +190,40 @@ namespace NavView
         }
 
         // -------------------------------------------------------------------------
-        // Toggle pane
+        // Toggle pane (FIX #1)
         // -------------------------------------------------------------------------
-
         private void TogglePane()
         {
-            if (_displayMode == PaneDisplayMode.Left)
-                return; // in Left il pane è sempre aperto
+            if (_displayMode == PaneDisplayMode.Left) return;
+
+            bool wasOpen = _isPaneOpen;
+            if (wasOpen)
+            {
+                // 1. Chiude tutti i nodi espansi
+                CollapseCollection(MenuItems);
+                CollapseCollection(FooterMenuItems);
+
+                // 2. Se è selezionato un figlio, sposta la selezione sul padre
+                if (_selectedItem != null)
+                {
+                    var parent = _selectedItem.Parent;
+                    while (parent != null && !parent.IsSelectable)
+                        parent = parent.Parent;
+
+                    if (parent != null)
+                    {
+                        var prev = _selectedItem;
+                        _selectedItem = parent;
+                        _contentHeader = parent.Label;
+                        SelectionChanged?.Invoke(this, new NavSelectionChangedEventArgs(_selectedItem, prev));
+                    }
+                }
+            }
 
             _isPaneOpen = !_isPaneOpen;
-            _currentPaneWidth = _isPaneOpen ? _paneWidth : _compactWidth;
+
+            // Ricalcola tutto: BuildVisibleItems vedrà !isPaneOpen e HasAnyExpanded==false,
+            // quindi imposterà correttamente _currentPaneWidth = _compactWidth.
             RecalcLayout();
 
             if (_isPaneOpen) PaneOpened?.Invoke(this, EventArgs.Empty);
@@ -283,11 +248,6 @@ namespace NavView
         // -------------------------------------------------------------------------
         // Layout
         // -------------------------------------------------------------------------
-
-        /// <summary>
-        /// Ricalcola la posizione del ContentArea e del controllo contenuto.
-        /// Chiamato a ogni resize, toggle pane, aggiunta voci.
-        /// </summary>
         private void RecalcLayout()
         {
             BuildVisibleItems();
@@ -295,8 +255,7 @@ namespace NavView
             if (_content != null)
             {
                 var ca = ContentAreaBounds;
-                int headerH = string.IsNullOrWhiteSpace(_contentHeader)
-                    ? 0 : NavViewMetrics.ContentHeaderHeight;
+                int headerH = string.IsNullOrWhiteSpace(_contentHeader) ? 0 : NavViewMetrics.ContentHeaderHeight;
 
                 _content.SetBounds(
                     ca.Left, ca.Top + headerH,
@@ -312,34 +271,21 @@ namespace NavView
             RecalcLayout();
         }
 
-        // -------------------------------------------------------------------------
-        // Bounds helpers
-        // -------------------------------------------------------------------------
-
         private Rectangle PaneBounds => new Rectangle(0, 0, _currentPaneWidth, Height);
-
         private Rectangle ContentAreaBounds => new Rectangle(
             _currentPaneWidth, 0,
             Math.Max(0, Width - _currentPaneWidth), Height);
 
         // -------------------------------------------------------------------------
-        // Costruzione lista voci visibili
+        // Costruzione lista voci visibili (FIX #1 & #2)
         // -------------------------------------------------------------------------
-
-        /// <summary>
-        /// Costruisce _visibleItems: la lista piatta e ordinata di tutte le voci
-        /// attualmente visibili, con i Bounds calcolati in coordinate pane.
-        /// Gestisce la logica accordion: i figli appaiono solo se IsExpanded == true.
-        /// Per LeftCompact con nodo espanso: allarga temporaneamente il pane.
-        /// </summary>
         private void BuildVisibleItems()
         {
             _visibleItems.Clear();
 
-            // Determina se c'è un nodo espanso in LeftCompact
             bool hasExpandedInCompact = _displayMode == PaneDisplayMode.LeftCompact
-                                     && !_isPaneOpen
-                                     && HasAnyExpanded(MenuItems, FooterMenuItems);
+                                      && !_isPaneOpen
+                                      && HasAnyExpanded(MenuItems, FooterMenuItems);
 
             _currentPaneWidth = _displayMode == PaneDisplayMode.Left
                 ? _paneWidth
@@ -348,32 +294,44 @@ namespace NavView
             int paneW = _currentPaneWidth;
             bool showLabels = _isPaneOpen
                            || _displayMode == PaneDisplayMode.Left
-                           || hasExpandedInCompact;
+                            || hasExpandedInCompact;
 
+            int paneHeight = Math.Max(0, Height);
             int y = NavViewMetrics.HeaderHeight;
 
-            // Menu items principali
-            AddItemsToVisible(MenuItems, ref y, paneW, showLabels);
+            // Calcola spazio riservato al footer e limite verticale per il menu
+            int footerH = 0;
+            int footerStartY = paneHeight;
+            int menuLimitY = paneHeight;
 
-            // Footer items: in fondo al pane se c'è spazio, altrimenti subito dopo i menu
             if (FooterMenuItems.Count > 0)
             {
-                int footerH = _renderer.MeasureItemsHeight(BuildRendererList(FooterMenuItems, showLabels));
-                int footerY = Math.Max(y + 8, Height - footerH - 8);
+                footerH = _renderer.MeasureItemsHeight(BuildRendererList(FooterMenuItems, showLabels));
+                // Ancoraggio in basso con margine inferiore di 8px
+                footerStartY = Math.Max(y + 16, paneHeight - footerH - 8);
+                menuLimitY = footerStartY - 4; // 4px di gap tra menu e footer
+            }
 
-                // Separatore automatico prima del footer se non c'è già
-                if (footerY > y + 8)
+            // 1. Voci menu (con limite verticale per non sovrascrivere il footer)
+            AddItemsToVisible(MenuItems, ref y, paneW, showLabels, menuLimitY);
+
+            // 2. Voci footer (ancorate stabilmente in basso)
+            if (FooterMenuItems.Count > 0)
+            {
+                // Separatore automatico se c'è spazio tra l'ultima voce menu e il footer
+                if (footerStartY > y + 8)
                 {
                     _visibleItems.Add(new RendererItemInfo
                     {
                         IsSeparator = true,
-                        Bounds = new Rectangle(0, footerY - NavViewMetrics.SeparatorHeight - 4,
+                        Bounds = new Rectangle(0, footerStartY - NavViewMetrics.SeparatorHeight - 2,
                                                paneW, NavViewMetrics.SeparatorHeight),
                         Source = null!
                     });
                 }
 
-                AddItemsToVisible(FooterMenuItems, ref footerY, paneW, showLabels);
+                int fy = footerStartY;
+                AddItemsToVisible(FooterMenuItems, ref fy, paneW, showLabels, int.MaxValue);
             }
 
             // Aggiorna bounds hamburger per hit testing
@@ -385,23 +343,20 @@ namespace NavView
         }
 
         private void AddItemsToVisible(NavItemCollection collection,
-                                       ref int y, int paneW, bool showLabels)
+                                       ref int y, int paneW, bool showLabels, int limitY = int.MaxValue)
         {
             foreach (var item in collection)
-            {
-                AddItemRecursive(item, ref y, paneW, showLabels);
-            }
+                AddItemRecursive(item, ref y, paneW, showLabels, limitY);
         }
 
-        private void AddItemRecursive(NavItem item, ref int y, int paneW, bool showLabels)
+        private void AddItemRecursive(NavItem item, ref int y, int paneW, bool showLabels, int limitY)
         {
             int h = item.IsSeparator ? NavViewMetrics.SeparatorHeight
                   : item.IsGroupHeader ? NavViewMetrics.GroupHeaderHeight
                                        : NavViewMetrics.ItemHeight;
 
-            // Group header invisibile in modalità compatta senza label
-            if (item.IsGroupHeader && !showLabels)
-                return;
+            if (item.IsGroupHeader && !showLabels) return;
+            if (y + h > limitY) return; // Blocca il layout se supera il limite calcolato
 
             var info = new RendererItemInfo
             {
@@ -422,16 +377,14 @@ namespace NavView
             _visibleItems.Add(info);
             y += h + (item.IsSeparator || item.IsGroupHeader ? 0 : NavViewMetrics.ItemMarginV);
 
-            // Figli: visibili solo se espanso
             if (item.HasChildren && item.IsExpanded)
             {
                 foreach (var child in item.Children)
-                    AddItemRecursive(child, ref y, paneW, showLabels);
+                    AddItemRecursive(child, ref y, paneW, showLabels, limitY);
             }
         }
 
-        private static List<RendererItemInfo> BuildRendererList(
-            NavItemCollection collection, bool showLabels)
+        private static List<RendererItemInfo> BuildRendererList(NavItemCollection collection, bool showLabels)
         {
             var list = new List<RendererItemInfo>();
             int y = 0;
@@ -461,29 +414,27 @@ namespace NavView
             return false;
         }
 
+        private static void CollapseCollection(NavItemCollection col)
+        {
+            foreach (var item in col.Flatten())
+                item.IsExpanded = false;
+        }
+
         // -------------------------------------------------------------------------
         // Paint
         // -------------------------------------------------------------------------
-
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-
-            // Sfondo generale (area contenuto)
             using var contentBg = new SolidBrush(_renderer.Colors.ContentBackground);
             g.FillRectangle(contentBg, ContentAreaBounds);
 
-            // Content header
             if (!string.IsNullOrWhiteSpace(_contentHeader))
             {
-                var chBounds = new Rectangle(
-                    _currentPaneWidth, 0,
-                    Width - _currentPaneWidth,
-                    NavViewMetrics.ContentHeaderHeight);
+                var chBounds = new Rectangle(_currentPaneWidth, 0, Width - _currentPaneWidth, NavViewMetrics.ContentHeaderHeight);
                 _renderer.DrawContentHeader(g, chBounds, _contentHeader);
             }
 
-            // Pane
             _renderer.DrawPane(g, PaneBounds, _appTitle, _visibleItems,
                                _isPaneOpen || _displayMode == PaneDisplayMode.Left,
                                _compactWidth);
@@ -492,11 +443,9 @@ namespace NavView
         // -------------------------------------------------------------------------
         // Mouse
         // -------------------------------------------------------------------------
-
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-
             bool hambHov = _hamburgerBounds.Contains(e.Location);
             if (hambHov != _hamburgerHovered)
             {
@@ -508,13 +457,11 @@ namespace NavView
             if (hit != _hoveredItem)
             {
                 _hoveredItem = hit;
-                BuildVisibleItems(); // aggiorna IsHovered nei RendererItemInfo
+                BuildVisibleItems();
                 Invalidate(PaneBounds);
             }
 
-            Cursor = (hit != null && hit.IsSelectable) || hambHov
-                ? Cursors.Hand
-                : Cursors.Default;
+            Cursor = (hit != null && hit.IsSelectable) || hambHov ? Cursors.Hand : Cursors.Default;
         }
 
         protected override void OnMouseLeave(EventArgs e)
@@ -532,93 +479,62 @@ namespace NavView
             base.OnMouseClick(e);
             if (e.Button != MouseButtons.Left) return;
 
-            // Click sull'hamburger
             if (_hamburgerBounds.Contains(e.Location))
             {
                 TogglePane();
                 return;
             }
 
-            // Click su una voce
             var item = HitTest(e.Location);
-            if (item == null) return;
+            if (item == null || !item.IsSelectable) return;
 
-            if (!item.IsSelectable) return;
-
-            // Nodo con figli: espandi/comprimi (accordion)
             if (item.HasChildren)
             {
                 item.IsExpanded = !item.IsExpanded;
-
-                // In LeftCompact con pane chiuso: se si espande,
-                // il pane si allarga automaticamente tramite BuildVisibleItems
                 BuildVisibleItems();
                 RecalcLayout();
                 return;
             }
 
-            // Voce foglia: seleziona
             SelectItem(item);
         }
 
         // -------------------------------------------------------------------------
         // Selezione
         // -------------------------------------------------------------------------
-
         private void SelectItem(NavItem item)
         {
             if (item == _selectedItem) return;
-
             var prev = _selectedItem;
             _selectedItem = item;
-
-            // Aggiorna ContentHeader con il label della voce selezionata
             _contentHeader = item.Label;
-
             BuildVisibleItems();
             RecalcLayout();
-
-            SelectionChanged?.Invoke(this,
-                new NavSelectionChangedEventArgs(item, prev));
+            SelectionChanged?.Invoke(this, new NavSelectionChangedEventArgs(item, prev));
         }
 
         // -------------------------------------------------------------------------
         // Hit testing
         // -------------------------------------------------------------------------
-
-        /// <summary>
-        /// Restituisce il NavItem sotto il punto dato (coordinate controllo),
-        /// o null se il punto non è su nessuna voce del pane.
-        /// </summary>
         private NavItem? HitTest(Point p)
         {
-            if (p.X > _currentPaneWidth) return null; // fuori dal pane
-            if (_hamburgerBounds.Contains(p)) return null; // sull'hamburger
+            if (p.X > _currentPaneWidth) return null;
+            if (_hamburgerBounds.Contains(p)) return null;
 
             foreach (var info in _visibleItems)
-            {
-                if (info.Source == null) continue;
-                if (info.Bounds.Contains(p))
-                    return info.Source;
-            }
+                if (info.Source != null && info.Bounds.Contains(p)) return info.Source;
+
             return null;
         }
 
         // -------------------------------------------------------------------------
         // Helpers
         // -------------------------------------------------------------------------
-
         private static NavItem? FindById(string id, IEnumerable<NavItem> items)
         {
             foreach (var item in items)
                 if (item.Id == id) return item;
             return null;
-        }
-
-        private static void CollapseCollection(NavItemCollection col)
-        {
-            foreach (var item in col.Flatten())
-                item.IsExpanded = false;
         }
 
         private void OnCollectionChanged(object? sender, EventArgs e)
@@ -629,14 +545,9 @@ namespace NavView
 
         private void UpdateCursor() => Cursor = Cursors.Default;
 
-        // -------------------------------------------------------------------------
-        // Dispose
-        // -------------------------------------------------------------------------
-
         protected override void Dispose(bool disposing)
         {
-            if (disposing)
-                _renderer?.Dispose();
+            if (disposing) _renderer?.Dispose();
             base.Dispose(disposing);
         }
     }

@@ -1,9 +1,6 @@
 ﻿// NavViewColors.cs
 // Contiene: NavViewColors (palette light/dark), FluentIcons (dizionario glyph)
 
-using System.Collections.Generic;
-using System.Drawing;
-
 namespace NavView
 {
     // -------------------------------------------------------------------------

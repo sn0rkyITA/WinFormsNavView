@@ -74,7 +74,7 @@ namespace NavView.Demo
                 PaneDisplayMode = PaneDisplayMode.LeftCompact,
                 Theme = NavViewTheme.Light,
                 PaneWidth = 220,
-                CompactPaneWidth = 48,
+                CompactPaneWidth = 64,
             };
 
             _navView.SelectionChanged += OnSelectionChanged;
@@ -215,6 +215,18 @@ namespace NavView.Demo
             page.Controls.Add(panel);
 
             return page;
+        }
+
+        private void InitializeComponent()
+        {
+            SuspendLayout();
+            // 
+            // MainForm
+            // 
+            ClientSize = new Size(284, 261);
+            Name = "MainForm";
+            ResumeLayout(false);
+
         }
 
 
