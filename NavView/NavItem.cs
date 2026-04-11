@@ -1,6 +1,12 @@
 ﻿// NavItem.cs
 // Contiene: NavItem, NavItemCollection, PaneDisplayMode, NavViewTheme,
 //           NavSelectionChangedEventArgs
+//
+// CHANGELOG:
+// - Aggiunte proprietà: ContextMenuStrip, DeselectOnClick, CustomIcon,
+//   SortOrder, ExecuteAction, IsVisible, ToolTipText, HasNotification
+// - NavSelectionChangedEventArgs.Item diventa NavItem? per supportare la deselezione
+// - Factory method aggiornati
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -13,7 +19,7 @@ namespace NavView
 
     /// <summary>
     /// Modalità di visualizzazione del pannello laterale.
-    /// Left     = sempre espanso, larghezza piena.
+    /// Left       = sempre espanso, larghezza piena.
     /// LeftCompact = icone sole; si allarga quando un padre con figli è espanso.
     /// </summary>
     public enum PaneDisplayMode
@@ -54,9 +60,16 @@ namespace NavView
 
         /// <summary>
         /// Glyph Unicode Segoe Fluent Icons (es. "\uE80F" per Home).
-        /// Usa FluentIcons.cs per i valori predefiniti.
+        /// Usa FluentIcons per i valori predefiniti.
+        /// Ignorato se CustomIcon è impostato.
         /// </summary>
         public string IconGlyph { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Icona raster personalizzata. Se impostata sostituisce IconGlyph.
+        /// Il NavigationView non gestisce il Dispose: è responsabilità dell'host.
+        /// </summary>
+        public Image? CustomIcon { get; set; }
 
         /// <summary>
         /// Dati arbitrari associati alla voce (es. tipo UserControl da mostrare).
@@ -67,13 +80,19 @@ namespace NavView
         // --- Stato -----------------------------------------------------------
 
         /// <summary>
-        /// Se false la voce è visualizzata ma non selezionabile.
+        /// Se false la voce è visualizzata ma non selezionabile né interagibile.
         /// </summary>
         public bool IsEnabled { get; set; } = true;
 
         /// <summary>
+        /// Se false la voce non viene inclusa nel layout né nel rendering.
+        /// Equivalente a nascondere la voce senza rimuoverla dalla collezione.
+        /// </summary>
+        public bool IsVisible { get; set; } = true;
+
+        /// <summary>
         /// Se true la voce è una linea separatrice orizzontale.
-        /// Label e IconGlyph vengono ignorati.
+        /// Label, IconGlyph e CustomIcon vengono ignorati.
         /// </summary>
         public bool IsSeparator { get; set; } = false;
 
@@ -87,13 +106,59 @@ namespace NavView
         /// </summary>
         public bool IsExpanded { get; set; } = false;
 
-        // --- Badge (predisposto, non renderizzato nella v1) ------------------
+        /// <summary>
+        /// Se true, cliccando la voce già selezionata la deseleziona.
+        /// SelectionChanged viene sollevato con Item = null.
+        /// Default false.
+        /// </summary>
+        public bool DeselectOnClick { get; set; } = false;
+
+        // --- Notifica --------------------------------------------------------
+
+        /// <summary>
+        /// Se true mostra un pallino colorato sovrapposto all'icona.
+        /// Il colore è definito da NavViewColors.NotificationDotColor.
+        /// </summary>
+        public bool HasNotification { get; set; } = false;
+
+        // --- Badge numerico (predisposto, non renderizzato) ------------------
 
         /// <summary>
         /// Numero da mostrare come badge. 0 = nessun badge.
-        /// Predisposto per versioni future; nella v1 non viene disegnato.
+        /// Predisposto per versioni future; non viene disegnato.
         /// </summary>
         public int BadgeCount { get; set; } = 0;
+
+        // --- Ordinamento -----------------------------------------------------
+
+        /// <summary>
+        /// Peso per l'ordinamento. Non applicato automaticamente dal controllo:
+        /// è a disposizione dell'host per costruire la collezione nell'ordine voluto.
+        /// Valori più bassi = posizione più alta. Default 0.
+        /// </summary>
+        public int SortOrder { get; set; } = 0;
+
+        // --- Comportamento ---------------------------------------------------
+
+        /// <summary>
+        /// Callback eseguita alla selezione della voce, in aggiunta all'evento
+        /// SelectionChanged del NavigationView. Utile per logica inline.
+        /// Ignorata se la voce non è selezionabile.
+        /// </summary>
+        public Action<NavItem>? ExecuteAction { get; set; }
+
+        /// <summary>
+        /// Menu contestuale mostrato al click destro sulla voce.
+        /// Null = nessun menu contestuale.
+        /// </summary>
+        [Browsable(false)]
+        public ContextMenuStrip? ContextMenuStrip { get; set; }
+
+        /// <summary>
+        /// Testo del tooltip mostrato al passaggio del mouse sulla voce.
+        /// Stringa vuota = nessun tooltip.
+        /// </summary>
+        public string ToolTipText { get; set; } = string.Empty;
 
         // --- Gerarchia -------------------------------------------------------
 
@@ -112,14 +177,14 @@ namespace NavView
         // --- Helpers ---------------------------------------------------------
 
         /// <summary>
-        /// True se la voce ha figli e non è separatore né group header.
+        /// True se la voce ha figli visibili e non è separatore né group header.
         /// </summary>
         public bool HasChildren => Children.Count > 0 && !IsSeparator && !IsGroupHeader;
 
         /// <summary>
-        /// True se la voce è selezionabile (non separatore, non group header, abilitata).
+        /// True se la voce è selezionabile (non separatore, non group header, abilitata, visibile).
         /// </summary>
-        public bool IsSelectable => !IsSeparator && !IsGroupHeader && IsEnabled;
+        public bool IsSelectable => !IsSeparator && !IsGroupHeader && IsEnabled && IsVisible;
 
         /// <summary>
         /// Profondità nella gerarchia. 0 = radice.
@@ -133,6 +198,12 @@ namespace NavView
         /// </summary>
         public static NavItem Create(string label, string iconGlyph, object? tag = null)
             => new NavItem { Label = label, IconGlyph = iconGlyph, Tag = tag };
+
+        /// <summary>
+        /// Crea una voce di navigazione con icona raster.
+        /// </summary>
+        public static NavItem Create(string label, Image customIcon, object? tag = null)
+            => new NavItem { Label = label, CustomIcon = customIcon, Tag = tag };
 
         /// <summary>
         /// Crea una linea separatrice.
@@ -178,7 +249,6 @@ namespace NavView
             ArgumentNullException.ThrowIfNull(item);
             item.Parent = _owner;
 
-            // Propaga il parent sui figli già presenti nell'item
             foreach (var child in item.Children)
                 child.Parent = item;
 
@@ -213,6 +283,7 @@ namespace NavView
         /// <summary>
         /// Restituisce tutti gli item in modo piatto (ricorsivo su Children).
         /// Utile per cercare per Id o per iterare tutto l'albero.
+        /// Include anche gli item con IsVisible = false.
         /// </summary>
         public IEnumerable<NavItem> Flatten()
         {
@@ -246,15 +317,16 @@ namespace NavView
     {
         /// <summary>
         /// La voce appena selezionata.
+        /// Null se la selezione è stata annullata tramite DeselectOnClick.
         /// </summary>
-        public NavItem Item { get; }
+        public NavItem? Item { get; }
 
         /// <summary>
         /// La voce precedentemente selezionata. Null se nessuna.
         /// </summary>
         public NavItem? PreviousItem { get; }
 
-        public NavSelectionChangedEventArgs(NavItem item, NavItem? previousItem)
+        public NavSelectionChangedEventArgs(NavItem? item, NavItem? previousItem)
         {
             Item = item;
             PreviousItem = previousItem;

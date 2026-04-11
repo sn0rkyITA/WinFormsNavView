@@ -1,9 +1,12 @@
 ﻿// NavViewRenderer.cs
 // Contiene: INavViewRenderer, NavViewRenderer (implementazione GDI+)
 //
-// Responsabilità: tutto il disegno del pannello laterale.
-// Il controllo NavigationView chiama questi metodi passando il Graphics
-// corrente; non conosce i dettagli del rendering.
+// CHANGELOG:
+// - INavViewRenderer.DrawPane aggiornato: hamburgerHovered, scrollbar params, clipY
+// - DrawPane applica clip region sull'area menu item (evita sconfinamento su header/footer)
+// - DrawScrollBar: scrollbar visuale sottile sul bordo destro del pane
+// - Fix hover su item disabilitato: guard in DrawNavItem
+// - Fix hamburger hover: DrawPaneHeader usa il colore HamburgerHoverBackground
 
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
@@ -78,6 +81,7 @@ namespace NavView
 
         /// <summary>Dimensione quadrata clickable del bottone hamburger.</summary>
         public const int HamburgerSize = 40;
+
     }
 
     // -------------------------------------------------------------------------
@@ -101,17 +105,21 @@ namespace NavView
                       string appTitle,
                       IReadOnlyList<RendererItemInfo> items,
                       bool isPaneOpen,
-                      int compactWidth);
+                      int compactWidth,
+                      bool hamburgerHovered,
+                      bool scrollBarVisible,
+                      Rectangle scrollBarBounds,
+                      Rectangle scrollThumbBounds,
+                      int menuClipTop,
+                      int menuClipBottom);
 
         /// <summary>
         /// Disegna l'header del contenuto (titolo sezione corrente).
-        /// Chiamato da NavigationView.OnPaint sull'area content header.
         /// </summary>
         void DrawContentHeader(Graphics g, Rectangle bounds, string headerText);
 
         /// <summary>
-        /// Calcola l'altezza totale occupata da una lista di item
-        /// (usata per determinare se i footer item vanno in fondo o subito dopo i menu item).
+        /// Calcola l'altezza totale occupata da una lista di item.
         /// </summary>
         int MeasureItemsHeight(IReadOnlyList<RendererItemInfo> items);
     }
@@ -122,9 +130,6 @@ namespace NavView
 
     /// <summary>
     /// Struttura dati passata al renderer per ogni voce visibile.
-    /// Il renderer non conosce NavItem direttamente: riceve solo
-    /// le informazioni necessarie al disegno.
-    /// Questo disaccoppia il modello dal rendering.
     /// </summary>
     public class RendererItemInfo
     {
@@ -141,12 +146,22 @@ namespace NavView
 
         /// <summary>
         /// Rectangle calcolato dal controllo per questa voce (coordinate nel pane).
-        /// Il renderer lo usa per disegnare e il controllo lo usa per hit testing.
+        /// Per i menu item le coordinate includono l'offset di scroll.
         /// </summary>
         public Rectangle Bounds { get; set; }
 
-        /// <summary>Riferimento al NavItem originale. Usato dal controllo per hit testing.</summary>
+        /// <summary>Riferimento al NavItem originale.</summary>
         public NavItem Source { get; set; } = null!;
+
+        /// <summary>
+        /// True se la voce appartiene al footer (coordinate assolute, non scrollabile).
+        /// False per menu item e separatore strutturale.
+        /// </summary>
+        public bool IsFooterItem { get; set; }
+
+        public Image? CustomIcon { get; set; }
+        public bool HasNotification { get; set; }
+
     }
 
     // -------------------------------------------------------------------------
@@ -155,21 +170,18 @@ namespace NavView
 
     /// <summary>
     /// Implementazione GDI+ del renderer.
-    /// Disegna tutto il pannello laterale con sfondo, voci, icone, label,
-    /// separatori, group header, frecce di espansione, accento selezione.
     /// </summary>
     public class NavViewRenderer : INavViewRenderer
     {
         public NavViewColors Colors { get; set; } = NavViewColors.Light();
 
-        // Cache font — ricreati solo se le dimensioni cambiano
+        // Cache font
         private Font? _iconFont;
         private Font? _labelFont;
         private Font? _appTitleFont;
         private Font? _contentHeaderFont;
         private Font? _groupHeaderFont;
 
-        private const string IconFontFamily = "Segoe Fluent Icons";
         private const string LabelFontFamily = "Segoe UI";
 
         // -------------------------------------------------------------------------
@@ -177,8 +189,7 @@ namespace NavView
         // -------------------------------------------------------------------------
 
         private Font IconFont => _iconFont
-            ??= TryCreateFont(IconFontFamily, NavViewMetrics.IconFontSize)
-             ?? new Font("Arial", NavViewMetrics.IconFontSize);
+            ??= NavViewFontResolver.CreateIconFont(NavViewMetrics.IconFontSize);
 
         private Font LabelFont => _labelFont
             ??= new Font(LabelFontFamily, NavViewMetrics.LabelFontSize,
@@ -196,12 +207,6 @@ namespace NavView
             ??= new Font(LabelFontFamily, NavViewMetrics.GroupHeaderFontSize,
                          FontStyle.Regular, GraphicsUnit.Point);
 
-        private static Font? TryCreateFont(string family, float size)
-        {
-            try { return new Font(family, size, FontStyle.Regular, GraphicsUnit.Point); }
-            catch { return null; }
-        }
-
         // -------------------------------------------------------------------------
         // DrawPane — entry point principale
         // -------------------------------------------------------------------------
@@ -210,7 +215,13 @@ namespace NavView
                              string appTitle,
                              IReadOnlyList<RendererItemInfo> items,
                              bool isPaneOpen,
-                             int compactWidth)
+                             int compactWidth,
+                             bool hamburgerHovered,
+                             bool scrollBarVisible,
+                             Rectangle scrollBarBounds,
+                             Rectangle scrollThumbBounds,
+                             int menuClipTop,
+                             int menuClipBottom)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
@@ -226,15 +237,45 @@ namespace NavView
                 paneBounds.Right - 1, paneBounds.Top,
                 paneBounds.Right - 1, paneBounds.Bottom);
 
-            // 3. Header (hamburger + AppTitle)
+            // 3. Header
             var headerBounds = new Rectangle(
                 paneBounds.Left, paneBounds.Top,
                 paneBounds.Width, NavViewMetrics.HeaderHeight);
-            DrawPaneHeader(g, headerBounds, appTitle, isPaneOpen);
+            DrawPaneHeader(g, headerBounds, appTitle, isPaneOpen, hamburgerHovered);
 
-            // 4. Voci
+            // 4. Voci con clip region per i menu item
+            var clipRegion = new Region(paneBounds);
+
+            // Clip region attiva: esclude l'header e la zona footer
+            var menuClipRect = new Rectangle(
+                paneBounds.Left, menuClipTop,
+                paneBounds.Width, menuClipBottom - menuClipTop);
+
+            // Salva lo stato grafico corrente
+            var originalClip = g.Clip;
+
+            // Disegna prima i footer item e i separatori strutturali (fuori dalla clip)
             foreach (var item in items)
-                DrawItem(g, item, isPaneOpen, paneBounds.Width);
+            {
+                if (item.IsFooterItem || (!item.IsFooterItem && item.IsSeparator && item.Source == null!))
+                    DrawItem(g, item, isPaneOpen, paneBounds.Width);
+            }
+
+            // Applica la clip region per i menu item
+            g.SetClip(menuClipRect);
+
+            foreach (var item in items)
+            {
+                if (!item.IsFooterItem && !(item.IsSeparator && item.Source == null!))
+                    DrawItem(g, item, isPaneOpen, paneBounds.Width);
+            }
+
+            // Ripristina la clip originale
+            g.Clip = originalClip;
+
+            // 5. Scrollbar (fuori dalla clip)
+            if (scrollBarVisible)
+                DrawScrollBar(g, scrollBarBounds, scrollThumbBounds);
         }
 
         // -------------------------------------------------------------------------
@@ -242,22 +283,28 @@ namespace NavView
         // -------------------------------------------------------------------------
 
         private void DrawPaneHeader(Graphics g, Rectangle bounds,
-                                    string appTitle, bool isPaneOpen)
+                                    string appTitle, bool isPaneOpen,
+                                    bool hamburgerHovered)
         {
-            // Sfondo header
             using var bg = new SolidBrush(Colors.PaneHeaderBackground);
             g.FillRectangle(bg, bounds);
 
-            // Bottone hamburger ≡ — centrato verticalmente nell'header
             int hambX = bounds.Left + NavViewMetrics.HamburgerPadding;
             int hambY = bounds.Top + (bounds.Height - NavViewMetrics.HamburgerSize) / 2;
             var hambBounds = new Rectangle(hambX, hambY,
                 NavViewMetrics.HamburgerSize, NavViewMetrics.HamburgerSize);
 
+            // FIX: sfondo hover hamburger
+            if (hamburgerHovered)
+            {
+                using var hoverBrush = new SolidBrush(Colors.HamburgerHoverBackground);
+                using var hoverPath = RoundedRect(hambBounds, NavViewMetrics.ItemCornerRadius);
+                g.FillPath(hoverBrush, hoverPath);
+            }
+
             DrawIconGlyph(g, FluentIcons.Menu, hambBounds,
                 Colors.HamburgerForeground, IconFont);
 
-            // AppTitle — solo se pane aperto e testo non vuoto
             if (isPaneOpen && !string.IsNullOrWhiteSpace(appTitle))
             {
                 int titleX = hambBounds.Right + 8;
@@ -310,7 +357,8 @@ namespace NavView
             var bounds = item.Bounds;
 
             // --- Sfondo arrotondato ------------------------------------------
-            if (item.IsSelected || item.IsHovered)
+            // FIX: no sfondo hover se item disabilitato
+            if (item.IsSelected || (item.IsHovered && item.IsEnabled))
             {
                 var bgColor = item.IsSelected
                     ? Colors.ItemSelectedBackground
@@ -344,11 +392,11 @@ namespace NavView
             // --- Icona -------------------------------------------------------
             var iconColor = item.IsSelected ? Colors.IconSelectedForeground
                           : !item.IsEnabled ? Colors.IconDisabledForeground
-                                             : Colors.IconForeground;
+                                            : Colors.IconForeground;
 
             int indent = item.Depth * NavViewMetrics.DepthIndent;
             int iconLeft = bounds.Left + NavViewMetrics.IconPaddingLeft + indent;
-            int iconSize = NavViewMetrics.HamburgerSize; // stessa altezza del hamburger
+            int iconSize = NavViewMetrics.HamburgerSize;
             var iconBounds = new Rectangle(iconLeft,
                 bounds.Top + (bounds.Height - iconSize) / 2,
                 iconSize, iconSize);
@@ -361,7 +409,7 @@ namespace NavView
             {
                 var labelColor = item.IsSelected ? Colors.ItemSelectedForeground
                                : !item.IsEnabled ? Colors.ItemDisabledForeground
-                                                  : Colors.ItemForeground;
+                                                 : Colors.ItemForeground;
 
                 int labelLeft = iconBounds.Right + NavViewMetrics.IconLabelGap;
                 int chevronW = item.HasChildren ? NavViewMetrics.ChevronWidth : 0;
@@ -426,7 +474,7 @@ namespace NavView
 
         private void DrawGroupHeader(Graphics g, RendererItemInfo item, bool isPaneOpen)
         {
-            if (!isPaneOpen) return; // in modalità compatta non si mostra
+            if (!isPaneOpen) return;
 
             var bounds = item.Bounds;
             int indent = item.Depth * NavViewMetrics.DepthIndent;
@@ -438,12 +486,31 @@ namespace NavView
             var sf = new StringFormat
             {
                 Alignment = StringAlignment.Near,
-                LineAlignment = StringAlignment.Far, // allineato in basso
+                LineAlignment = StringAlignment.Far,
                 Trimming = StringTrimming.EllipsisCharacter,
                 FormatFlags = StringFormatFlags.NoWrap
             };
             g.DrawString(item.Label.ToUpperInvariant(),
                 GroupHeaderFont, brush, textBounds, sf);
+        }
+
+        // -------------------------------------------------------------------------
+        // DrawScrollBar
+        // -------------------------------------------------------------------------
+
+        private void DrawScrollBar(Graphics g, Rectangle trackBounds, Rectangle thumbBounds)
+        {
+            // Track: quasi trasparente
+            using var trackBrush = new SolidBrush(
+                Color.FromArgb(30, Colors.ItemForeground));
+            using var trackPath = RoundedRect(trackBounds, 3);
+            g.FillPath(trackBrush, trackPath);
+
+            // Thumb
+            using var thumbBrush = new SolidBrush(
+                Color.FromArgb(120, Colors.ItemForeground));
+            using var thumbPath = RoundedRect(thumbBounds, 3);
+            g.FillPath(thumbBrush, thumbPath);
         }
 
         // -------------------------------------------------------------------------
@@ -455,13 +522,11 @@ namespace NavView
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 
-            // Sfondo
             using var bg = new SolidBrush(Colors.ContentHeaderBackground);
             g.FillRectangle(bg, bounds);
 
             if (string.IsNullOrWhiteSpace(headerText)) return;
 
-            // Testo
             var textBounds = new Rectangle(
                 bounds.Left + 24, bounds.Top,
                 bounds.Width - 32, bounds.Height);
@@ -497,9 +562,6 @@ namespace NavView
         // Helpers grafici
         // -------------------------------------------------------------------------
 
-        /// <summary>
-        /// Disegna un glyph Segoe Fluent centrato nel rettangolo dato.
-        /// </summary>
         private static void DrawIconGlyph(Graphics g, string glyph,
                                           Rectangle bounds, Color color, Font font)
         {
@@ -514,15 +576,11 @@ namespace NavView
             g.DrawString(glyph, font, brush, bounds, sf);
         }
 
-        /// <summary>
-        /// Crea un GraphicsPath con angoli arrotondati.
-        /// </summary>
         private static GraphicsPath RoundedRect(Rectangle bounds, int radius)
         {
             int d = radius * 2;
             var path = new GraphicsPath();
 
-            // Assicura che il raggio non superi la metà del lato minore
             if (d > bounds.Width) d = bounds.Width;
             if (d > bounds.Height) d = bounds.Height;
 
@@ -538,7 +596,6 @@ namespace NavView
         // Dispose
         // -------------------------------------------------------------------------
 
-        /// <summary>Rilascia i font in cache.</summary>
         public void Dispose()
         {
             _iconFont?.Dispose();
