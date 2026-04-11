@@ -21,6 +21,7 @@ Offre un'esperienza utente pulita, prestazioni elevate e un'architettura modular
 - [🛠️ Note Tecniche](#️-note-tecniche)
 - [🤝 Contribuire](#-contribuire)
 - [📄 Licenza](#-licenza)
+- [Changelog](#-changelog)
 
 ---
 
@@ -120,3 +121,39 @@ MIT License
 ---
 
 💡 Realizzato per la community WinForms
+
+## Changelog
+
+### [0.2.0] - 2026-04-11
+
+#### Aggiunto
+- **Scroll custom** area menu con scrollbar visuale proporzionale (6px),
+  rotella mouse, clip region. Header e footer rimangono fissi.
+- **NavItem.IsVisible** — nasconde una voce senza rimuoverla dalla collezione.
+- **NavItem.HasNotification** — pallino colorato sovrapposto all'icona.
+- **NavItem.CustomIcon** — immagine raster in sostituzione del glyph.
+- **NavItem.DeselectOnClick** — deseleziona la voce già selezionata al click.
+- **NavItem.ExecuteAction** — callback inline eseguita alla selezione.
+- **NavItem.ContextMenuStrip** — menu contestuale al tasto destro sulla voce.
+- **NavItem.ToolTipText** — tooltip nativo WinForms al passaggio del mouse.
+- **NavItem.SortOrder** — peso per ordinamento gestito dall'host.
+- **NavViewFontResolver** — risoluzione font icone a tre livelli:
+  Segoe Fluent Icons di sistema (Win11), embedded nella DLL (Win10),
+  Segoe MDL2 Assets come fallback finale.
+- **NavViewColors.NotificationDotColor** — colore dot badge in tema chiaro e scuro.
+- **FluentIcons** — aggiunte categorie pratiche/workflow, immobili/catasto,
+  finanza/computo, scadenze/tempo, utility UI.
+
+#### Corretto
+- Glyph errati nel dizionario FluentIcons: `Error`, `Clock`, `Compass`,
+  `Visibility`, `Apps`, `Alarm`, `Image`.
+- Duplicati risolti: `Chart`/`Table`, `Report`/`BarChart`, `Copy`/`MailUnread`.
+- `DocumentAdd` rimosso (identico a `Document`).
+- Footer: separatore strutturale sempre presente, voci mai tagliate dal layout.
+- Hover su item disabilitato non disegna più lo sfondo hover.
+- Hamburger hover usa correttamente `HamburgerHoverBackground`.
+- Cast forzato `(NavViewRenderer)` nel setter `Renderer` rimosso.
+- Doppio click non genera più azioni indesiderate sul menu.
+- Comportamento `LeftCompact`: il pane si richiude dopo selezione figlio
+  solo se era stato aperto da voce, non da hamburger.
+- Selezione dopo chiusura accordion ripristina il padre come voce evidenziata.
