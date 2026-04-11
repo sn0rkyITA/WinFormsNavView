@@ -143,6 +143,8 @@ namespace NavView
         public bool HasChildren { get; set; }
         public bool IsExpanded { get; set; }
         public int Depth { get; set; }
+        public Image? CustomIcon { get; set; }
+        public bool HasNotification { get; set; }
 
         /// <summary>
         /// Rectangle calcolato dal controllo per questa voce (coordinate nel pane).
@@ -158,10 +160,6 @@ namespace NavView
         /// False per menu item e separatore strutturale.
         /// </summary>
         public bool IsFooterItem { get; set; }
-
-        public Image? CustomIcon { get; set; }
-        public bool HasNotification { get; set; }
-
     }
 
     // -------------------------------------------------------------------------
@@ -401,8 +399,28 @@ namespace NavView
                 bounds.Top + (bounds.Height - iconSize) / 2,
                 iconSize, iconSize);
 
-            if (!string.IsNullOrEmpty(item.IconGlyph))
+            // CustomIcon ha priorità su IconGlyph
+            if (item.CustomIcon != null)
+            {
+                g.DrawImage(item.CustomIcon, iconBounds);
+            }
+            else if (!string.IsNullOrEmpty(item.IconGlyph))
+            {
                 DrawIconGlyph(g, item.IconGlyph, iconBounds, iconColor, IconFont);
+            }
+
+            // Dot badge — cerchio sovrapposto in alto a destra dell'icona
+            if (item.HasNotification)
+            {
+                const int dotSize = 8;
+                var dotBounds = new Rectangle(
+                    iconBounds.Right - dotSize,
+                    iconBounds.Top + 2,
+                    dotSize, dotSize);
+
+                using var dotBrush = new SolidBrush(Colors.NotificationDotColor);
+                g.FillEllipse(dotBrush, dotBounds);
+            }
 
             // --- Label (solo pane aperto) ------------------------------------
             if (isPaneOpen)

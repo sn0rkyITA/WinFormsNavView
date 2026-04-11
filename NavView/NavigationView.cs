@@ -28,6 +28,7 @@ namespace NavView
         private NavViewTheme _theme = NavViewTheme.Light;
         private PaneDisplayMode _displayMode = PaneDisplayMode.LeftCompact;
         private bool _isPaneOpen = false;
+        private bool _paneOpenedByHamburger = false;
         private int _paneWidth = 240;
         private int _compactWidth = 48;
         private string _appTitle = string.Empty;
@@ -237,9 +238,9 @@ namespace NavView
         {
             if (_displayMode == PaneDisplayMode.Left) return;
 
-            bool wasOpen = _isPaneOpen;
-            if (wasOpen)
+            if (_isPaneOpen)
             {
+                // Chiusura
                 CollapseCollection(MenuItems);
                 CollapseCollection(FooterMenuItems);
 
@@ -248,7 +249,6 @@ namespace NavView
                     var parent = _selectedItem.Parent;
                     while (parent != null && !parent.IsSelectable)
                         parent = parent.Parent;
-
                     if (parent != null)
                     {
                         var prev = _selectedItem;
@@ -259,27 +259,33 @@ namespace NavView
                     }
                 }
 
-                // Reset scroll quando si chiude il pane
+                _isPaneOpen = false;
+                _paneOpenedByHamburger = false;
                 _scrollOffset = 0;
+                RecalcLayout();
+                PaneClosed?.Invoke(this, EventArgs.Empty);
             }
-
-            _isPaneOpen = !_isPaneOpen;
-            RecalcLayout();
-
-            if (_isPaneOpen) PaneOpened?.Invoke(this, EventArgs.Empty);
-            else PaneClosed?.Invoke(this, EventArgs.Empty);
+            else
+            {
+                // Apertura
+                _isPaneOpen = true;
+                _paneOpenedByHamburger = true;
+                RecalcLayout();
+                PaneOpened?.Invoke(this, EventArgs.Empty);
+            }
         }
-
         private void UpdatePaneState()
         {
             if (_displayMode == PaneDisplayMode.Left)
             {
                 _isPaneOpen = true;
+                _paneOpenedByHamburger = true;
                 _currentPaneWidth = _paneWidth;
             }
             else
             {
                 _isPaneOpen = false;
+                _paneOpenedByHamburger = false;
                 _currentPaneWidth = _compactWidth;
                 _scrollOffset = 0;
             }
@@ -519,6 +525,8 @@ namespace NavView
                         Depth = item.Depth,
                         Bounds = new Rectangle(0, y, paneW, h),
                         Source = item,
+                        CustomIcon = item.CustomIcon,
+                        HasNotification = item.HasNotification,
                         IsFooterItem = false
                     });
                 }
@@ -540,6 +548,8 @@ namespace NavView
                     Depth = item.Depth,
                     Bounds = new Rectangle(0, y, paneW, h),
                     Source = item,
+                    CustomIcon = item.CustomIcon,
+                    HasNotification = item.HasNotification,
                     IsFooterItem = true
                 });
             }
@@ -668,13 +678,12 @@ namespace NavView
                 ? Cursors.Hand
                 : Cursors.Default;
 
-            var tooltipHit = HitTest(e.Location);
-            if (tooltipHit != _tooltipItem)
+            if (hit != _tooltipItem)
             {
-                _tooltipItem = tooltipHit;
+                _tooltipItem = hit;
                 _toolTip.SetToolTip(this,
-                    tooltipHit != null && !string.IsNullOrEmpty(tooltipHit.ToolTipText)
-                        ? tooltipHit.ToolTipText
+                    hit != null && !string.IsNullOrEmpty(hit.ToolTipText)
+                        ? hit.ToolTipText
                         : string.Empty);
             }
         }
@@ -689,15 +698,15 @@ namespace NavView
             Cursor = Cursors.Default;
         }
 
-        protected override void OnMouseClick(MouseEventArgs e)
+        protected override void OnMouseUp(MouseEventArgs e)
         {
-            base.OnMouseClick(e);
+            base.OnMouseUp(e);
 
             if (e.Button == MouseButtons.Right)
             {
-                var xitem = HitTest(e.Location);
-                if (xitem?.ContextMenuStrip != null)
-                    xitem.ContextMenuStrip.Show(this, e.Location);
+                var item = HitTest(e.Location);
+                if (item?.ContextMenuStrip != null)
+                    item.ContextMenuStrip.Show(this, e.Location);
                 return;
             }
 
@@ -709,18 +718,30 @@ namespace NavView
                 return;
             }
 
-            var item = HitTest(e.Location);
-            if (item == null || !item.IsSelectable) return;
+            var clicked = HitTest(e.Location);
+            if (clicked == null || !clicked.IsSelectable) return;
 
-            if (item.HasChildren)
+            if (clicked.HasChildren)
             {
-                item.IsExpanded = !item.IsExpanded;
+                clicked.IsExpanded = !clicked.IsExpanded;
+
+                if (_displayMode == PaneDisplayMode.LeftCompact)
+                {
+                    if (!_paneOpenedByHamburger)
+                    {
+                        // Aperto da voce: gestisce apertura/chiusura accordion
+                        _isPaneOpen = clicked.IsExpanded;
+                        if (!_isPaneOpen) _scrollOffset = 0;
+                    }
+                    // Se aperto da hamburger non tocca nulla — rimane aperto
+                }
+
                 BuildVisibleItems();
                 RecalcLayout();
                 return;
             }
 
-            SelectItem(item);
+            SelectItem(clicked);
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
@@ -736,6 +757,10 @@ namespace NavView
             ScrollBy(-steps * ScrollStep);
         }
 
+        // Doppio click disabilitato — non ha significato nel contesto del menu
+        protected override void OnDoubleClick(EventArgs e) { }
+        protected override void OnMouseDoubleClick(MouseEventArgs e) { }
+
         // -------------------------------------------------------------------------
         // Selezione
         // -------------------------------------------------------------------------
@@ -747,22 +772,52 @@ namespace NavView
                 var prev = _selectedItem;
                 _selectedItem = null;
                 _contentHeader = string.Empty;
+
+                if (_displayMode == PaneDisplayMode.LeftCompact && _isPaneOpen && !_paneOpenedByHamburger)
+                {
+                    CollapseCollection(MenuItems);
+                    CollapseCollection(FooterMenuItems);
+                    _isPaneOpen = false;
+                    _scrollOffset = 0;
+
+                    var ancestor = item.Parent;
+                    while (ancestor != null && !ancestor.IsSelectable)
+                        ancestor = ancestor.Parent;
+                    if (ancestor != null)
+                        _selectedItem = ancestor;
+                }
+
                 BuildVisibleItems();
                 RecalcLayout();
                 SelectionChanged?.Invoke(this,
                     new NavSelectionChangedEventArgs(null, prev));
                 return;
             }
+
             var previous = _selectedItem;
             _selectedItem = item;
             _contentHeader = item.Label;
+
+            if (_displayMode == PaneDisplayMode.LeftCompact &&  _isPaneOpen && !_paneOpenedByHamburger) // chiude solo se aperto da voce, non da hamburger
+{
+    CollapseCollection(MenuItems);
+    CollapseCollection(FooterMenuItems);
+    _isPaneOpen = false;
+    _scrollOffset = 0;
+
+    var ancestor = item.Parent;
+    while (ancestor != null && !ancestor.IsSelectable)
+        ancestor = ancestor.Parent;
+    if (ancestor != null)
+        _selectedItem = ancestor;
+}
+
             BuildVisibleItems();
             RecalcLayout();
             item.ExecuteAction?.Invoke(item);
             SelectionChanged?.Invoke(this,
                 new NavSelectionChangedEventArgs(item, previous));
         }
-
         // -------------------------------------------------------------------------
         // Hit testing
         // -------------------------------------------------------------------------
