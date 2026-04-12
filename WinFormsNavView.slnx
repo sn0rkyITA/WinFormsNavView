@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="NavView.Demo/NavView.Demo.csproj" />
   <Project Path="NavView/NavView.csproj" />
+  <Project Path="TestVBform/TestVBform.vbproj" Id="1796634a-2a49-4d0b-8dbc-685f98e85d4c" />
 </Solution>

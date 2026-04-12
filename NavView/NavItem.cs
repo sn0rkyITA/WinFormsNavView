@@ -138,6 +138,14 @@ namespace NavView
         /// </summary>
         public int SortOrder { get; set; } = 0;
 
+        /// <summary>
+        /// Chiave di raggruppamento per ordinamento futuro.
+        /// Voci con lo stesso GroupKey appartengono allo stesso gruppo.
+        /// Non utilizzato dal controllo nella versione corrente —
+        /// predisposto per l'implementazione futura dei GroupHeader come contenitori.
+        /// </summary>
+        public string? GroupKey { get; set; }
+
         // --- Comportamento ---------------------------------------------------
 
         /// <summary>
