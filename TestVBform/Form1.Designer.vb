@@ -29,6 +29,7 @@ Partial Class Form1
         ' NavigationView1
         ' 
         NavigationView1.AppTitle = "App di test"
+        NavigationView1.AutoSizePaneWidth = True
         NavigationView1.CompactPaneWidth = 64
         NavigationView1.ContentHeader = "Pippoooooooo"
         NavigationView1.Dock = DockStyle.Fill
@@ -36,7 +37,7 @@ Partial Class Form1
         NavigationView1.Location = New Point(0, 0)
         NavigationView1.Name = "NavigationView1"
         NavigationView1.PaneDisplayMode = NavView.PaneDisplayMode.LeftCompact
-        NavigationView1.PaneWidth = 240
+        NavigationView1.PaneWidth = 100
         NavigationView1.Size = New Size(800, 450)
         NavigationView1.TabIndex = 0
         NavigationView1.Text = "NavigationView1"

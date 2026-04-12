@@ -29,6 +29,7 @@ Public Class Form1
 
         ConfigureNavView()
         PopulateMenu()
+        NavigationView1.FitPaneWidth()
         NavigationView1.Navigate(NavigationView1.MenuItems(0))
     End Sub
 

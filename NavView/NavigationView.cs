@@ -30,7 +30,8 @@ namespace NavView
         private bool _isPaneOpen = false;
         private bool _paneOpenedByHamburger = false;
         private int _paneWidth = 240;
-        private int _compactWidth = 48;
+        private bool _autoSizePaneWidth = false;
+        private int _compactWidth = NavViewMetrics.CompactPaneWidthMin;
         private string _appTitle = string.Empty;
         private string _contentHeader = string.Empty;
         private NavItem? _selectedItem;
@@ -120,15 +121,35 @@ namespace NavView
         public int PaneWidth
         {
             get => _paneWidth;
-            set { _paneWidth = Math.Max(100, value); RecalcLayout(); }
+            set
+            {
+                if (_autoSizePaneWidth) return; // ignorato in modalità auto
+                _paneWidth = Math.Max(100, value);
+                RecalcLayout();
+            }
         }
+
+
+        [Category("NavView")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public bool AutoSizePaneWidth
+        {
+            get => _autoSizePaneWidth;
+            set
+            {
+                _autoSizePaneWidth = value;
+                if (value) RecalcPaneWidth();
+            }
+        }
+
+
 
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public int CompactPaneWidth
         {
             get => _compactWidth;
-            set { _compactWidth = Math.Max(32, value); RecalcLayout(); }
+            set { _compactWidth = Math.Max(NavViewMetrics.CompactPaneWidthMin, value); RecalcLayout(); }
         }
 
         [Category("NavView")]
@@ -194,6 +215,55 @@ namespace NavView
         // -------------------------------------------------------------------------
         // API pubblica
         // -------------------------------------------------------------------------
+
+        /// <summary>
+        /// Calcola e imposta PaneWidth in base alla label più larga tra tutti
+        /// i NavItem visibili, tenendo conto di icona, indentazione e chevron.
+        /// Chiamare dopo aver popolato MenuItems e FooterMenuItems.
+        /// </summary>
+
+        private void RecalcPaneWidth()
+        {
+            using var g = CreateGraphics();
+            using var font = new Font("Segoe UI", NavViewMetrics.LabelFontSize,
+                                      FontStyle.Regular, GraphicsUnit.Point);
+            int maxWidth = 0;
+            MeasureCollection(MenuItems, g, font, ref maxWidth);
+            MeasureCollection(FooterMenuItems, g, font, ref maxWidth);
+            _paneWidth = Math.Max(100, maxWidth + NavViewMetrics.PaneWidthPadding);
+            RecalcLayout();
+        }
+
+        public void FitPaneWidth()
+        {
+            RecalcPaneWidth();
+        }
+
+        private static void MeasureCollection(NavItemCollection collection,
+                                               Graphics g, Font font, ref int maxWidth)
+        {
+            foreach (var item in collection.Flatten())
+            {
+                if (!item.IsVisible || item.IsSeparator || item.IsGroupHeader) continue;
+
+                int iconArea = NavViewMetrics.IconPaddingLeft
+                             + NavViewMetrics.HamburgerSize
+                             + NavViewMetrics.IconLabelGap
+                             + item.Depth * NavViewMetrics.DepthIndent;
+
+                int chevron = item.HasChildren ? NavViewMetrics.ChevronWidth : 0;
+
+                int labelW = (int)Math.Ceiling(
+                    g.MeasureString(item.Label, font).Width);
+
+                int total = iconArea + labelW + chevron + NavViewMetrics.ItemMarginH;
+
+                if (total > maxWidth) maxWidth = total;
+            }
+        }
+
+
+
         public void SetContent(Control? control)
         {
             if (_content != null)
@@ -443,8 +513,14 @@ namespace NavView
             }
 
             // ---- Hamburger bounds per hit testing ------------------------------
+            // In modalità compatta centra l'hamburger rispetto al pane
+            // In modalità aperta lo posiziona con padding fisso a sinistra
+            int hambX = (_isPaneOpen || _displayMode == PaneDisplayMode.Left)
+                ? NavViewMetrics.HamburgerPadding
+                : (_currentPaneWidth - NavViewMetrics.HamburgerSize) / 2;
+
             _hamburgerBounds = new Rectangle(
-                NavViewMetrics.HamburgerPadding,
+                hambX,
                 (NavViewMetrics.HeaderHeight - NavViewMetrics.HamburgerSize) / 2,
                 NavViewMetrics.HamburgerSize,
                 NavViewMetrics.HamburgerSize);
@@ -860,7 +936,8 @@ namespace NavView
 
         private void OnCollectionChanged(object? sender, EventArgs e)
         {
-            _scrollOffset = 0; // reset scroll quando la collezione cambia
+            _scrollOffset = 0;
+            if (_autoSizePaneWidth) RecalcPaneWidth();
             BuildVisibleItems();
             Invalidate();
         }

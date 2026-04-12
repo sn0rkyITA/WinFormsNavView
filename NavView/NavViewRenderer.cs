@@ -82,6 +82,12 @@ namespace NavView
         /// <summary>Dimensione quadrata clickable del bottone hamburger.</summary>
         public const int HamburgerSize = 40;
 
+        /// <summary>Margine aggiuntivo applicato da AutoSizePaneWidth per evitare testo a bordo.</summary>
+        public const int PaneWidthPadding = 24;
+
+        /// <summary>Larghezza minima del pane compatto in pixel.</summary>
+        public const int CompactPaneWidthMin = 52;
+
     }
 
     // -------------------------------------------------------------------------
@@ -287,7 +293,10 @@ namespace NavView
             using var bg = new SolidBrush(Colors.PaneHeaderBackground);
             g.FillRectangle(bg, bounds);
 
-            int hambX = bounds.Left + NavViewMetrics.HamburgerPadding;
+            int hambX = isPaneOpen
+                ? bounds.Left + NavViewMetrics.HamburgerPadding
+                : bounds.Left + (bounds.Width - NavViewMetrics.HamburgerSize) / 2;
+
             int hambY = bounds.Top + (bounds.Height - NavViewMetrics.HamburgerSize) / 2;
             var hambBounds = new Rectangle(hambX, hambY,
                 NavViewMetrics.HamburgerSize, NavViewMetrics.HamburgerSize);
