@@ -7,6 +7,8 @@
 // - DrawScrollBar: scrollbar visuale sottile sul bordo destro del pane
 // - Fix hover su item disabilitato: guard in DrawNavItem
 // - Fix hamburger hover: DrawPaneHeader usa il colore HamburgerHoverBackground
+// - RendererItemInfo: bool IsSeparator/IsGroupHeader/IsFooterItem sostituiti da Kind (RendererItemKind)
+// - DrawPane/DrawItem/MeasureItemsHeight aggiornati per leggere Kind
 
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
@@ -87,7 +89,6 @@ namespace NavView
 
         /// <summary>Larghezza minima del pane compatto in pixel.</summary>
         public const int CompactPaneWidthMin = 52;
-
     }
 
     // -------------------------------------------------------------------------
@@ -139,13 +140,14 @@ namespace NavView
     /// </summary>
     public class RendererItemInfo
     {
+        /// <summary>Tipo della voce. Sostituisce i bool IsSeparator/IsGroupHeader/IsFooterItem.</summary>
+        public RendererItemKind Kind { get; set; } = RendererItemKind.MenuItem;
+
         public string Label { get; set; } = string.Empty;
         public string IconGlyph { get; set; } = string.Empty;
         public bool IsSelected { get; set; }
         public bool IsHovered { get; set; }
         public bool IsEnabled { get; set; } = true;
-        public bool IsSeparator { get; set; }
-        public bool IsGroupHeader { get; set; }
         public bool HasChildren { get; set; }
         public bool IsExpanded { get; set; }
         public int Depth { get; set; }
@@ -158,14 +160,21 @@ namespace NavView
         /// </summary>
         public Rectangle Bounds { get; set; }
 
-        /// <summary>Riferimento al NavItem originale.</summary>
-        public NavItem Source { get; set; } = null!;
-
         /// <summary>
-        /// True se la voce appartiene al footer (coordinate assolute, non scrollabile).
-        /// False per menu item e separatore strutturale.
+        /// Riferimento al NavItem originale.
+        /// Null solo per StructuralSeparator.
         /// </summary>
-        public bool IsFooterItem { get; set; }
+        public NavItem? Source { get; set; }
+
+        // --- Helpers di comodo per il renderer ---------------------------------
+
+        /// <summary>True per Separator e StructuralSeparator.</summary>
+        public bool IsSeparatorKind =>
+            Kind == RendererItemKind.Separator ||
+            Kind == RendererItemKind.StructuralSeparator;
+
+        /// <summary>True per FooterItem.</summary>
+        public bool IsFooterItem => Kind == RendererItemKind.FooterItem;
     }
 
     // -------------------------------------------------------------------------
@@ -247,37 +256,31 @@ namespace NavView
                 paneBounds.Width, NavViewMetrics.HeaderHeight);
             DrawPaneHeader(g, headerBounds, appTitle, isPaneOpen, hamburgerHovered);
 
-            // 4. Voci con clip region per i menu item
-            var clipRegion = new Region(paneBounds);
-
-            // Clip region attiva: esclude l'header e la zona footer
-            var menuClipRect = new Rectangle(
-                paneBounds.Left, menuClipTop,
-                paneBounds.Width, menuClipBottom - menuClipTop);
-
-            // Salva lo stato grafico corrente
-            var originalClip = g.Clip;
-
-            // Disegna prima i footer item e i separatori strutturali (fuori dalla clip)
+            // 4. Footer e separatore strutturale (fuori dalla clip menu)
             foreach (var item in items)
             {
-                if (item.IsFooterItem || (!item.IsFooterItem && item.IsSeparator && item.Source == null!))
+                if (item.Kind == RendererItemKind.FooterItem ||
+                    item.Kind == RendererItemKind.StructuralSeparator)
                     DrawItem(g, item, isPaneOpen, paneBounds.Width);
             }
 
-            // Applica la clip region per i menu item
+            // 5. Menu item con clip region
+            var originalClip = g.Clip;
+            var menuClipRect = new Rectangle(
+                paneBounds.Left, menuClipTop,
+                paneBounds.Width, menuClipBottom - menuClipTop);
             g.SetClip(menuClipRect);
 
             foreach (var item in items)
             {
-                if (!item.IsFooterItem && !(item.IsSeparator && item.Source == null!))
+                if (item.Kind != RendererItemKind.FooterItem &&
+                    item.Kind != RendererItemKind.StructuralSeparator)
                     DrawItem(g, item, isPaneOpen, paneBounds.Width);
             }
 
-            // Ripristina la clip originale
             g.Clip = originalClip;
 
-            // 5. Scrollbar (fuori dalla clip)
+            // 6. Scrollbar (fuori dalla clip)
             if (scrollBarVisible)
                 DrawScrollBar(g, scrollBarBounds, scrollThumbBounds);
         }
@@ -301,7 +304,6 @@ namespace NavView
             var hambBounds = new Rectangle(hambX, hambY,
                 NavViewMetrics.HamburgerSize, NavViewMetrics.HamburgerSize);
 
-            // FIX: sfondo hover hamburger
             if (hamburgerHovered)
             {
                 using var hoverBrush = new SolidBrush(Colors.HamburgerHoverBackground);
@@ -333,25 +335,25 @@ namespace NavView
         }
 
         // -------------------------------------------------------------------------
-        // DrawItem — dispatcher per tipo
+        // DrawItem — dispatcher per Kind
         // -------------------------------------------------------------------------
 
         private void DrawItem(Graphics g, RendererItemInfo item,
                               bool isPaneOpen, int paneWidth)
         {
-            if (item.IsSeparator)
+            switch (item.Kind)
             {
-                DrawSeparator(g, item.Bounds, paneWidth);
-                return;
+                case RendererItemKind.Separator:
+                case RendererItemKind.StructuralSeparator:
+                    DrawSeparator(g, item.Bounds, paneWidth);
+                    break;
+                case RendererItemKind.GroupHeader:
+                    DrawGroupHeader(g, item, isPaneOpen);
+                    break;
+                default: // MenuItem, FooterItem
+                    DrawNavItem(g, item, isPaneOpen, paneWidth);
+                    break;
             }
-
-            if (item.IsGroupHeader)
-            {
-                DrawGroupHeader(g, item, isPaneOpen);
-                return;
-            }
-
-            DrawNavItem(g, item, isPaneOpen, paneWidth);
         }
 
         // -------------------------------------------------------------------------
@@ -364,7 +366,6 @@ namespace NavView
             var bounds = item.Bounds;
 
             // --- Sfondo arrotondato ------------------------------------------
-            // FIX: no sfondo hover se item disabilitato
             if (item.IsSelected || (item.IsHovered && item.IsEnabled))
             {
                 var bgColor = item.IsSelected
@@ -408,7 +409,6 @@ namespace NavView
                 bounds.Top + (bounds.Height - iconSize) / 2,
                 iconSize, iconSize);
 
-            // CustomIcon ha priorità su IconGlyph
             if (item.CustomIcon != null)
             {
                 g.DrawImage(item.CustomIcon, iconBounds);
@@ -418,7 +418,7 @@ namespace NavView
                 DrawIconGlyph(g, item.IconGlyph, iconBounds, iconColor, IconFont);
             }
 
-            // Dot badge — cerchio sovrapposto in alto a destra dell'icona
+            // Dot badge
             if (item.HasNotification)
             {
                 const int dotSize = 8;
@@ -527,13 +527,11 @@ namespace NavView
 
         private void DrawScrollBar(Graphics g, Rectangle trackBounds, Rectangle thumbBounds)
         {
-            // Track: quasi trasparente
             using var trackBrush = new SolidBrush(
                 Color.FromArgb(30, Colors.ItemForeground));
             using var trackPath = RoundedRect(trackBounds, 3);
             g.FillPath(trackBrush, trackPath);
 
-            // Thumb
             using var thumbBrush = new SolidBrush(
                 Color.FromArgb(120, Colors.ItemForeground));
             using var thumbPath = RoundedRect(thumbBounds, 3);
@@ -578,9 +576,13 @@ namespace NavView
             int total = 0;
             foreach (var item in items)
             {
-                if (item.IsSeparator) total += NavViewMetrics.SeparatorHeight;
-                else if (item.IsGroupHeader) total += NavViewMetrics.GroupHeaderHeight;
-                else total += NavViewMetrics.ItemHeight;
+                total += item.Kind switch
+                {
+                    RendererItemKind.Separator or
+                    RendererItemKind.StructuralSeparator => NavViewMetrics.SeparatorHeight,
+                    RendererItemKind.GroupHeader => NavViewMetrics.GroupHeaderHeight,
+                    _ => NavViewMetrics.ItemHeight
+                };
             }
             return total;
         }

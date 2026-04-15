@@ -1,23 +1,46 @@
-﻿// NavigationView.cs
-// Controllo principale. Gestisce layout, hit testing, eventi mouse,
-// selezione, espansione accordion, cambio tema, SetContent.
-//
-// CHANGELOG:
-// - Scroll custom area menu (rotella mouse, scrollbar visuale 6px)
-// - Header e footer fissi, solo i menu item scrollano
-// - Fix footer: separatore sempre presente, voci mai tagliate
-// - Fix hover su item disabilitato
-// - Fix hamburger hover passato al renderer
-// - Fix cast forzato INavViewRenderer
-
-using System.ComponentModel;
+﻿using System.ComponentModel;
 
 namespace NavView
 {
+    // -------------------------------------------------------------------------
+    // Enums
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Determina se il NavigationView gestisce internamente l'area contenuto
+    /// oppure delega la gestione all'host esterno.
+    /// </summary>
+    public enum ContentMode
+    {
+        /// <summary>Il NavView disegna l'area contenuto e posiziona il control interno.</summary>
+        InternalHost,
+        /// <summary>Nessuna area contenuto: il pane occupa tutta la larghezza del controllo.
+        /// L'host intercetta SelectionChanged e gestisce tab/property pane da solo.</summary>
+        ExternalHost
+    }
+
+    /// <summary>
+    /// Tipo di voce nella lista dei RendererItemInfo.
+    /// Sostituisce i flag booleani IsSeparator / IsGroupHeader / IsFooterItem.
+    /// </summary>
+    public enum RendererItemKind
+    {
+        MenuItem,
+        FooterItem,
+        GroupHeader,
+        Separator,
+        /// <summary>Separatore strutturale fisso sopra il footer — non scrollabile, Source è null.</summary>
+        StructuralSeparator
+    }
+
+    // -------------------------------------------------------------------------
+    // NavigationView
+    // -------------------------------------------------------------------------
+
     /// <summary>
     /// NavigationView per WinForms.
     /// Pannello laterale collassabile con voci di menu, footer, gerarchia,
-    /// header contenuto e area contenuto neutrale.
+    /// header contenuto e area contenuto opzionale (solo in InternalHost).
     /// </summary>
     public class NavigationView : Control
     {
@@ -27,6 +50,7 @@ namespace NavView
         private INavViewRenderer _renderer;
         private NavViewTheme _theme = NavViewTheme.Light;
         private PaneDisplayMode _displayMode = PaneDisplayMode.LeftCompact;
+        private ContentMode _contentMode = ContentMode.InternalHost;
         private bool _isPaneOpen = false;
         private bool _paneOpenedByHamburger = false;
         private int _paneWidth = 240;
@@ -34,6 +58,7 @@ namespace NavView
         private int _compactWidth = NavViewMetrics.CompactPaneWidthMin;
         private string _appTitle = string.Empty;
         private string _contentHeader = string.Empty;
+        private bool _autoContentHeader = false;
         private NavItem? _selectedItem;
         private NavItem? _hoveredItem;
         private Control? _content;
@@ -92,12 +117,42 @@ namespace NavView
             set { _appTitle = value ?? string.Empty; Invalidate(); }
         }
 
+        /// <summary>
+        /// Header mostrato nell'area contenuto (solo InternalHost).
+        /// In ExternalHost ignorato visivamente; se AutoContentHeader è true,
+        /// viene aggiornato automaticamente dalla selezione ma non disegnato.
+        /// </summary>
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string ContentHeader
         {
             get => _contentHeader;
             set { _contentHeader = value ?? string.Empty; Invalidate(); }
+        }
+
+        /// <summary>
+        /// Se true, ContentHeader viene aggiornato automaticamente al label
+        /// della voce selezionata (e svuotato alla deselezione).
+        /// Default: false — il chiamante gestisce ContentHeader manualmente.
+        /// </summary>
+        [Category("NavView")]
+        [DefaultValue(false)]
+        public bool AutoContentHeader
+        {
+            get => _autoContentHeader;
+            set { _autoContentHeader = value; }
+        }
+
+        /// <summary>
+        /// Modalità di gestione dell'area contenuto.
+        /// ExternalHost: nessuna area contenuto disegnata; SetContent non ha effetto.
+        /// </summary>
+        [Category("NavView")]
+        [DefaultValue(ContentMode.InternalHost)]
+        public ContentMode ContentMode
+        {
+            get => _contentMode;
+            set { _contentMode = value; RecalcLayout(); }
         }
 
         [Category("NavView")]
@@ -123,12 +178,11 @@ namespace NavView
             get => _paneWidth;
             set
             {
-                if (_autoSizePaneWidth) return; // ignorato in modalità auto
+                if (_autoSizePaneWidth) return;
                 _paneWidth = Math.Max(100, value);
                 RecalcLayout();
             }
         }
-
 
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -141,8 +195,6 @@ namespace NavView
                 if (value) RecalcPaneWidth();
             }
         }
-
-
 
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -177,7 +229,6 @@ namespace NavView
             get => _renderer;
             set
             {
-                // FIX: rimosso cast forzato a NavViewRenderer, si usa l'interfaccia
                 if (_renderer is IDisposable d) d.Dispose();
                 _renderer = value;
                 Invalidate();
@@ -215,12 +266,6 @@ namespace NavView
         // -------------------------------------------------------------------------
         // API pubblica
         // -------------------------------------------------------------------------
-
-        /// <summary>
-        /// Calcola e imposta PaneWidth in base alla label più larga tra tutti
-        /// i NavItem visibili, tenendo conto di icona, indentazione e chevron.
-        /// Chiamare dopo aver popolato MenuItems e FooterMenuItems.
-        /// </summary>
 
         private void RecalcPaneWidth()
         {
@@ -262,10 +307,14 @@ namespace NavView
             }
         }
 
-
-
+        /// <summary>
+        /// Imposta il controllo contenuto interno. Solo efficace in ContentMode.InternalHost.
+        /// In ExternalHost la chiamata è ignorata.
+        /// </summary>
         public void SetContent(Control? control)
         {
+            if (_contentMode == ContentMode.ExternalHost) return;
+
             if (_content != null)
             {
                 Controls.Remove(_content);
@@ -310,7 +359,6 @@ namespace NavView
 
             if (_isPaneOpen)
             {
-                // Chiusura
                 CollapseCollection(MenuItems);
                 CollapseCollection(FooterMenuItems);
 
@@ -323,7 +371,8 @@ namespace NavView
                     {
                         var prev = _selectedItem;
                         _selectedItem = parent;
-                        _contentHeader = parent.Label;
+                        if (_autoContentHeader)
+                            _contentHeader = parent.Label;
                         SelectionChanged?.Invoke(this,
                             new NavSelectionChangedEventArgs(_selectedItem, prev));
                     }
@@ -337,13 +386,13 @@ namespace NavView
             }
             else
             {
-                // Apertura
                 _isPaneOpen = true;
                 _paneOpenedByHamburger = true;
                 RecalcLayout();
                 PaneOpened?.Invoke(this, EventArgs.Empty);
             }
         }
+
         private void UpdatePaneState()
         {
             if (_displayMode == PaneDisplayMode.Left)
@@ -369,7 +418,8 @@ namespace NavView
         {
             BuildVisibleItems();
 
-            if (_content != null)
+            // In ExternalHost non c'è area contenuto da gestire
+            if (_contentMode == ContentMode.InternalHost && _content != null)
             {
                 var ca = ContentAreaBounds;
                 int headerH = string.IsNullOrWhiteSpace(_contentHeader)
@@ -387,16 +437,20 @@ namespace NavView
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            // Dopo resize, lo scroll potrebbe diventare valido o invalido
             ClampScrollOffset();
             RecalcLayout();
         }
 
         private Rectangle PaneBounds => new Rectangle(0, 0, _currentPaneWidth, Height);
 
-        private Rectangle ContentAreaBounds => new Rectangle(
-            _currentPaneWidth, 0,
-            Math.Max(0, Width - _currentPaneWidth), Height);
+        /// <summary>
+        /// In ExternalHost il pane occupa tutta la larghezza — ContentAreaBounds è vuoto.
+        /// </summary>
+        private Rectangle ContentAreaBounds => _contentMode == ContentMode.ExternalHost
+            ? Rectangle.Empty
+            : new Rectangle(
+                _currentPaneWidth, 0,
+                Math.Max(0, Width - _currentPaneWidth), Height);
 
         // -------------------------------------------------------------------------
         // Costruzione lista voci visibili
@@ -418,7 +472,6 @@ namespace NavView
                            || _displayMode == PaneDisplayMode.Left
                            || hasExpandedInCompact;
 
-            // Lo scroll è attivo solo quando il pane mostra le label
             bool scrollActive = showLabels;
 
             int paneHeight = Math.Max(0, Height);
@@ -431,26 +484,22 @@ namespace NavView
             {
                 footerH = _renderer.MeasureItemsHeight(
                     BuildRendererList(FooterMenuItems, showLabels));
-                // Margine inferiore 8px
                 footerStartY = paneHeight - footerH - 8;
-                // Garantisce almeno 8px di gap dall'header
                 footerStartY = Math.Max(NavViewMetrics.HeaderHeight + 8, footerStartY);
             }
 
-            // ---- Separatore fisso sopra il footer ------------------------------
-            // Sempre presente quando ci sono footer item, indipendentemente dallo scroll
+            // ---- Separatore strutturale sopra il footer ------------------------
             if (FooterMenuItems.Count > 0)
             {
                 _visibleItems.Add(new RendererItemInfo
                 {
-                    IsSeparator = true,
+                    Kind = RendererItemKind.StructuralSeparator,
                     Bounds = new Rectangle(
                         0,
                         footerStartY - NavViewMetrics.SeparatorHeight - 2,
                         paneW,
                         NavViewMetrics.SeparatorHeight),
-                    Source = null!,
-                    IsFooterItem = false // è un separatore strutturale, non scrollabile
+                    Source = null
                 });
             }
 
@@ -458,12 +507,10 @@ namespace NavView
             if (FooterMenuItems.Count > 0)
             {
                 int fy = footerStartY;
-                AddItemsToVisible(FooterMenuItems, ref fy, paneW, showLabels,
-                                  isFooter: true);
+                AddItemsToVisible(FooterMenuItems, ref fy, paneW, showLabels, isFooter: true);
             }
 
             // ---- Area viewport menu --------------------------------------------
-            // Lo spazio disponibile per i menu item va dall'header al separatore footer
             int menuAreaTop = NavViewMetrics.HeaderHeight;
             int menuAreaBottom = FooterMenuItems.Count > 0
                 ? footerStartY - NavViewMetrics.SeparatorHeight - 4
@@ -471,20 +518,16 @@ namespace NavView
 
             _menuViewportHeight = Math.Max(0, menuAreaBottom - menuAreaTop);
 
-            // ---- Menu item: coordinate virtuali (ignora scroll qui) ------------
-            // Prima calcoliamo l'altezza virtuale totale
+            // ---- Menu item: coordinate virtuali --------------------------------
             _menuVirtualHeight = MeasureVirtualHeight(MenuItems, showLabels);
 
-            // Garantisce che l'offset non superi il massimo scrollabile
             if (scrollActive)
                 ClampScrollOffset();
             else
                 _scrollOffset = 0;
 
-            // Poi costruiamo i RendererItemInfo con Bounds traslati dall'offset
             int y = menuAreaTop - _scrollOffset;
-            AddItemsToVisible(MenuItems, ref y, paneW, showLabels,
-                              isFooter: false);
+            AddItemsToVisible(MenuItems, ref y, paneW, showLabels, isFooter: false);
 
             // ---- Scrollbar -----------------------------------------------------
             _scrollBarVisible = scrollActive && _menuVirtualHeight > _menuViewportHeight;
@@ -496,10 +539,8 @@ namespace NavView
                 int sbH = _menuViewportHeight;
                 _scrollBarBounds = new Rectangle(sbX, sbY, ScrollBarWidth, sbH);
 
-                // Altezza thumb proporzionale
                 int thumbH = Math.Max(ScrollBarMinThumbHeight,
                     (int)((double)_menuViewportHeight / _menuVirtualHeight * sbH));
-                // Posizione thumb
                 int maxOffset = _menuVirtualHeight - _menuViewportHeight;
                 int thumbY = maxOffset > 0
                     ? sbY + (int)((double)_scrollOffset / maxOffset * (sbH - thumbH))
@@ -512,9 +553,7 @@ namespace NavView
                 _scrollThumbBounds = Rectangle.Empty;
             }
 
-            // ---- Hamburger bounds per hit testing ------------------------------
-            // In modalità compatta centra l'hamburger rispetto al pane
-            // In modalità aperta lo posiziona con padding fisso a sinistra
+            // ---- Hamburger bounds ----------------------------------------------
             int hambX = (_isPaneOpen || _displayMode == PaneDisplayMode.Left)
                 ? NavViewMetrics.HamburgerPadding
                 : (_currentPaneWidth - NavViewMetrics.HamburgerSize) / 2;
@@ -526,10 +565,6 @@ namespace NavView
                 NavViewMetrics.HamburgerSize);
         }
 
-        /// <summary>
-        /// Calcola l'altezza virtuale totale di una collezione (ricorsiva),
-        /// senza applicare nessun limite o scroll offset.
-        /// </summary>
         private int MeasureVirtualHeight(NavItemCollection collection, bool showLabels)
         {
             int total = 0;
@@ -573,60 +608,50 @@ namespace NavView
                   : item.IsGroupHeader ? NavViewMetrics.GroupHeaderHeight
                                        : NavViewMetrics.ItemHeight;
 
-            // Per i menu item (non footer) includiamo anche quelli parzialmente
-            // fuori dalla viewport — il renderer applicherà la clip region.
-            // Li escludiamo solo se completamente al di sopra dell'header
-            // o completamente al di sotto del viewport (ottimizzazione).
-            if (!isFooter)
+            // Determina il Kind corretto
+            RendererItemKind kind;
+            if (item.IsSeparator)
+                kind = RendererItemKind.Separator;
+            else if (item.IsGroupHeader)
+                kind = RendererItemKind.GroupHeader;
+            else if (isFooter)
+                kind = RendererItemKind.FooterItem;
+            else
+                kind = RendererItemKind.MenuItem;
+
+            bool include;
+            if (isFooter)
             {
-                int menuAreaTop = NavViewMetrics.HeaderHeight;
-                int menuAreaBottom = menuAreaTop + _menuViewportHeight;
-
-                bool completelyAbove = y + h <= menuAreaTop;
-                bool completelyBelow = y >= menuAreaBottom;
-
-                if (!completelyAbove && !completelyBelow)
-                {
-                    _visibleItems.Add(new RendererItemInfo
-                    {
-                        Label = item.Label,
-                        IconGlyph = item.IconGlyph,
-                        IsSelected = item == _selectedItem,
-                        IsHovered = item == _hoveredItem && item.IsEnabled, // FIX: no hover su disabilitati
-                        IsEnabled = item.IsEnabled,
-                        IsSeparator = item.IsSeparator,
-                        IsGroupHeader = item.IsGroupHeader,
-                        HasChildren = item.HasChildren,
-                        IsExpanded = item.IsExpanded,
-                        Depth = item.Depth,
-                        Bounds = new Rectangle(0, y, paneW, h),
-                        Source = item,
-                        CustomIcon = item.CustomIcon,
-                        HasNotification = item.HasNotification,
-                        IsFooterItem = false
-                    });
-                }
+                // Footer item: sempre inclusi, coordinate assolute
+                include = true;
             }
             else
             {
-                // Footer item: sempre aggiunti, coordinate assolute
+                // Menu item: includi solo se (almeno parzialmente) nel viewport
+                int menuAreaTop = NavViewMetrics.HeaderHeight;
+                int menuAreaBottom = menuAreaTop + _menuViewportHeight;
+                bool completelyAbove = y + h <= menuAreaTop;
+                bool completelyBelow = y >= menuAreaBottom;
+                include = !completelyAbove && !completelyBelow;
+            }
+
+            if (include)
+            {
                 _visibleItems.Add(new RendererItemInfo
                 {
+                    Kind = kind,
                     Label = item.Label,
                     IconGlyph = item.IconGlyph,
                     IsSelected = item == _selectedItem,
-                    IsHovered = item == _hoveredItem && item.IsEnabled, // FIX: no hover su disabilitati
+                    IsHovered = item == _hoveredItem && item.IsEnabled,
                     IsEnabled = item.IsEnabled,
-                    IsSeparator = item.IsSeparator,
-                    IsGroupHeader = item.IsGroupHeader,
                     HasChildren = item.HasChildren,
                     IsExpanded = item.IsExpanded,
                     Depth = item.Depth,
                     Bounds = new Rectangle(0, y, paneW, h),
                     Source = item,
                     CustomIcon = item.CustomIcon,
-                    HasNotification = item.HasNotification,
-                    IsFooterItem = true
+                    HasNotification = item.HasNotification
                 });
             }
 
@@ -645,13 +670,18 @@ namespace NavView
             foreach (var item in collection)
             {
                 if (item.IsGroupHeader && !showLabels) continue;
+
+                RendererItemKind kind;
+                if (item.IsSeparator) kind = RendererItemKind.Separator;
+                else if (item.IsGroupHeader) kind = RendererItemKind.GroupHeader;
+                else kind = RendererItemKind.FooterItem;
+
                 int h = item.IsSeparator ? NavViewMetrics.SeparatorHeight
                       : item.IsGroupHeader ? NavViewMetrics.GroupHeaderHeight
                                            : NavViewMetrics.ItemHeight;
                 list.Add(new RendererItemInfo
                 {
-                    IsSeparator = item.IsSeparator,
-                    IsGroupHeader = item.IsGroupHeader,
+                    Kind = kind,
                     Bounds = new Rectangle(0, y, 200, h),
                     CustomIcon = item.CustomIcon,
                     HasNotification = item.HasNotification,
@@ -704,23 +734,31 @@ namespace NavView
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            using var contentBg = new SolidBrush(_renderer.Colors.ContentBackground);
-            g.FillRectangle(contentBg, ContentAreaBounds);
 
-            if (!string.IsNullOrWhiteSpace(_contentHeader))
+            // In ExternalHost non si disegna nulla fuori dal pane
+            if (_contentMode == ContentMode.InternalHost)
             {
-                var chBounds = new Rectangle(
-                    _currentPaneWidth, 0,
-                    Width - _currentPaneWidth,
-                    NavViewMetrics.ContentHeaderHeight);
-                _renderer.DrawContentHeader(g, chBounds, _contentHeader);
+                var ca = ContentAreaBounds;
+                if (!ca.IsEmpty)
+                {
+                    using var contentBg = new SolidBrush(_renderer.Colors.ContentBackground);
+                    g.FillRectangle(contentBg, ca);
+                }
+
+                if (_autoContentHeader && !string.IsNullOrWhiteSpace(_contentHeader))
+                {
+                    var chBounds = new Rectangle(
+                        _currentPaneWidth, 0,
+                        Width - _currentPaneWidth,
+                        NavViewMetrics.ContentHeaderHeight);
+                    _renderer.DrawContentHeader(g, chBounds, _contentHeader);
+                }
             }
 
-            // Il renderer gestisce internamente la clip region per i menu item
             _renderer.DrawPane(g, PaneBounds, _appTitle, _visibleItems,
                                _isPaneOpen || _displayMode == PaneDisplayMode.Left,
                                _compactWidth,
-                               _hamburgerHovered,       // FIX: passa stato hover hamburger
+                               _hamburgerHovered,
                                _scrollBarVisible,
                                _scrollBarBounds,
                                _scrollThumbBounds,
@@ -805,11 +843,9 @@ namespace NavView
                 {
                     if (!_paneOpenedByHamburger)
                     {
-                        // Aperto da voce: gestisce apertura/chiusura accordion
                         _isPaneOpen = clicked.IsExpanded;
                         if (!_isPaneOpen) _scrollOffset = 0;
                     }
-                    // Se aperto da hamburger non tocca nulla — rimane aperto
                 }
 
                 BuildVisibleItems();
@@ -824,16 +860,13 @@ namespace NavView
         {
             base.OnMouseWheel(e);
 
-            // Scroll solo se il puntatore è nel pane e sopra il footer
             if (e.X > _currentPaneWidth) return;
             if (!_scrollBarVisible) return;
 
-            // e.Delta > 0 = scroll su, < 0 = scroll giù
             int steps = e.Delta / SystemInformation.MouseWheelScrollDelta;
             ScrollBy(-steps * ScrollStep);
         }
 
-        // Doppio click disabilitato — non ha significato nel contesto del menu
         protected override void OnDoubleClick(EventArgs e) { }
         protected override void OnMouseDoubleClick(MouseEventArgs e) { }
 
@@ -847,7 +880,7 @@ namespace NavView
                 if (!item.DeselectOnClick) return;
                 var prev = _selectedItem;
                 _selectedItem = null;
-                _contentHeader = string.Empty;
+                if (_autoContentHeader) _contentHeader = string.Empty;
 
                 if (_displayMode == PaneDisplayMode.LeftCompact && _isPaneOpen && !_paneOpenedByHamburger)
                 {
@@ -872,21 +905,21 @@ namespace NavView
 
             var previous = _selectedItem;
             _selectedItem = item;
-            _contentHeader = item.Label;
+            if (_autoContentHeader) _contentHeader = item.Label;
 
-            if (_displayMode == PaneDisplayMode.LeftCompact &&  _isPaneOpen && !_paneOpenedByHamburger) // chiude solo se aperto da voce, non da hamburger
-{
-    CollapseCollection(MenuItems);
-    CollapseCollection(FooterMenuItems);
-    _isPaneOpen = false;
-    _scrollOffset = 0;
+            if (_displayMode == PaneDisplayMode.LeftCompact && _isPaneOpen && !_paneOpenedByHamburger)
+            {
+                CollapseCollection(MenuItems);
+                CollapseCollection(FooterMenuItems);
+                _isPaneOpen = false;
+                _scrollOffset = 0;
 
-    var ancestor = item.Parent;
-    while (ancestor != null && !ancestor.IsSelectable)
-        ancestor = ancestor.Parent;
-    if (ancestor != null)
-        _selectedItem = ancestor;
-}
+                var ancestor = item.Parent;
+                while (ancestor != null && !ancestor.IsSelectable)
+                    ancestor = ancestor.Parent;
+                if (ancestor != null)
+                    _selectedItem = ancestor;
+            }
 
             BuildVisibleItems();
             RecalcLayout();
@@ -894,6 +927,7 @@ namespace NavView
             SelectionChanged?.Invoke(this,
                 new NavSelectionChangedEventArgs(item, previous));
         }
+
         // -------------------------------------------------------------------------
         // Hit testing
         // -------------------------------------------------------------------------
@@ -901,8 +935,6 @@ namespace NavView
         {
             if (p.X > _currentPaneWidth) return null;
             if (_hamburgerBounds.Contains(p)) return null;
-
-            // Esclude i click nella zona scrollbar
             if (_scrollBarVisible && _scrollBarBounds.Contains(p)) return null;
 
             int menuAreaTop = NavViewMetrics.HeaderHeight;
@@ -910,10 +942,10 @@ namespace NavView
 
             foreach (var info in _visibleItems)
             {
-                if (info.Source == null) continue;
+                // StructuralSeparator: Source è null, non è cliccabile
+                if (info.Kind == RendererItemKind.StructuralSeparator) continue;
 
-                // Per i menu item verifica che il punto sia dentro il viewport
-                if (!info.IsFooterItem)
+                if (info.Kind == RendererItemKind.MenuItem || info.Kind == RendererItemKind.Separator || info.Kind == RendererItemKind.GroupHeader)
                 {
                     if (p.Y < menuAreaTop || p.Y > menuAreaBottom) continue;
                 }
