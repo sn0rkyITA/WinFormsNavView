@@ -134,7 +134,7 @@ namespace Pane
             AggiungiSezioneAFooter(_sezioneComandi);
         }
         public bool IsExpanded => _isExpanded;
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int ExpandedWidth
         {
             get => _expandedWidth;
@@ -144,7 +144,7 @@ namespace Pane
                 if (_isExpanded) Width = _expandedWidth;
             }
         }
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Color AccentColor
         {
             get => _accentColor;
@@ -156,19 +156,19 @@ namespace Pane
                 Invalidate(true);
             }
         }
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        [DefaultValue(PaneCollapseMode.Minimal)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public PaneCollapseMode CollapseMode
         {
             get => _collapseMode;
-            set { _collapseMode = value; }
+            set
+            {
+                if (_collapseMode == value) return;
+                _collapseMode = value;
+                ApplyCollapseMode();
+            }
         }
-       
-        
-        
-        
-        
-        
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Content)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string? ActivePluginId
         {
             get => _activePluginId;
@@ -251,6 +251,23 @@ namespace Pane
             {
                 _compactBar.Visible = false;
                 AvviaAnimazionePannello(0, onComplete: null);
+            }
+        }
+        private void ApplyCollapseMode()
+        {
+            if (_isExpanded) return; // espanso: il modo non ha effetto visivo immediato
+
+            // Il pannello è già collassato: riallinea la UI al nuovo modo
+            if (_collapseMode == PaneCollapseMode.Compact)
+            {
+                AggiornaCompactBar();
+                _compactBar.Visible = true;
+                Width = CompactBarWidth;
+            }
+            else // Minimal
+            {
+                _compactBar.Visible = false;
+                Width = 0;
             }
         }
         public void SalvaStatoSezioni()

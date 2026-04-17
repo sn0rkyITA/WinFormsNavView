@@ -30,9 +30,9 @@ Partial Class Form1
         ' Button1
         ' 
         Button1.Anchor = AnchorStyles.Bottom Or AnchorStyles.Right
-        Button1.Location = New Point(317, 493)
+        Button1.Location = New Point(317, 435)
         Button1.Name = "Button1"
-        Button1.Size = New Size(141, 50)
+        Button1.Size = New Size(141, 44)
         Button1.TabIndex = 1
         Button1.Text = "Button1"
         Button1.UseVisualStyleBackColor = True
@@ -44,11 +44,11 @@ Partial Class Form1
         NavigationView1.CompactPaneWidth = 52
         NavigationView1.ContentHeader = ""
         NavigationView1.IsPaneOpen = False
-        NavigationView1.Location = New Point(12, 12)
+        NavigationView1.Location = New Point(12, 11)
         NavigationView1.Name = "NavigationView1"
         NavigationView1.PaneDisplayMode = NavView.PaneDisplayMode.LeftCompact
         NavigationView1.PaneWidth = 240
-        NavigationView1.Size = New Size(517, 400)
+        NavigationView1.Size = New Size(517, 353)
         NavigationView1.TabIndex = 2
         NavigationView1.Text = "NavigationView1"
         NavigationView1.Theme = NavView.NavViewTheme.Light
@@ -56,17 +56,17 @@ Partial Class Form1
         ' WfPropertyPane1
         ' 
         WfPropertyPane1.Dock = DockStyle.Right
-        WfPropertyPane1.Location = New Point(572, 0)
+        WfPropertyPane1.Location = New Point(599, 0)
         WfPropertyPane1.Name = "WfPropertyPane1"
-        WfPropertyPane1.Size = New Size(228, 555)
+        WfPropertyPane1.Size = New Size(201, 490)
         WfPropertyPane1.TabIndex = 3
         WfPropertyPane1.Text = "WfPropertyPane1"
         ' 
         ' Form1
         ' 
-        AutoScaleDimensions = New SizeF(7F, 17F)
+        AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
-        ClientSize = New Size(800, 555)
+        ClientSize = New Size(800, 490)
         Controls.Add(WfPropertyPane1)
         Controls.Add(NavigationView1)
         Controls.Add(Button1)
