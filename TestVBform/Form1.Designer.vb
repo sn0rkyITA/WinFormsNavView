@@ -22,60 +22,51 @@ Partial Class Form1
     'Do not modify it using the code editor.
     <System.Diagnostics.DebuggerStepThrough()>
     Private Sub InitializeComponent()
-        Button1 = New Button()
-        NavigationView1 = New NavView.NavigationView()
-        WfPropertyPane1 = New Pane.WFPropertyPane()
+        NavigationView2 = New NavView.NavigationView()
+        WfPropertyPane2 = New Pane.WFPropertyPane()
         SuspendLayout()
         ' 
-        ' Button1
+        ' NavigationView2
         ' 
-        Button1.Anchor = AnchorStyles.Bottom Or AnchorStyles.Right
-        Button1.Location = New Point(317, 435)
-        Button1.Name = "Button1"
-        Button1.Size = New Size(141, 44)
-        Button1.TabIndex = 1
-        Button1.Text = "Button1"
-        Button1.UseVisualStyleBackColor = True
+        NavigationView2.AppTitle = ""
+        NavigationView2.AutoSizePaneWidth = False
+        NavigationView2.CompactPaneWidth = 52
+        NavigationView2.ContentHeader = ""
+        NavigationView2.IsPaneOpen = False
+        NavigationView2.Location = New Point(12, 12)
+        NavigationView2.Name = "NavigationView2"
+        NavigationView2.PaneDisplayMode = NavView.PaneDisplayMode.LeftCompact
+        NavigationView2.PaneWidth = 240
+        NavigationView2.Size = New Size(200, 297)
+        NavigationView2.TabIndex = 0
+        NavigationView2.Text = "NavigationView2"
+        NavigationView2.Theme = NavView.NavViewTheme.Light
         ' 
-        ' NavigationView1
+        ' WfPropertyPane2
         ' 
-        NavigationView1.AppTitle = ""
-        NavigationView1.AutoSizePaneWidth = False
-        NavigationView1.CompactPaneWidth = 52
-        NavigationView1.ContentHeader = ""
-        NavigationView1.IsPaneOpen = False
-        NavigationView1.Location = New Point(12, 11)
-        NavigationView1.Name = "NavigationView1"
-        NavigationView1.PaneDisplayMode = NavView.PaneDisplayMode.LeftCompact
-        NavigationView1.PaneWidth = 240
-        NavigationView1.Size = New Size(517, 353)
-        NavigationView1.TabIndex = 2
-        NavigationView1.Text = "NavigationView1"
-        NavigationView1.Theme = NavView.NavViewTheme.Light
-        ' 
-        ' WfPropertyPane1
-        ' 
-        WfPropertyPane1.Dock = DockStyle.Right
-        WfPropertyPane1.Location = New Point(599, 0)
-        WfPropertyPane1.Name = "WfPropertyPane1"
-        WfPropertyPane1.Size = New Size(201, 490)
-        WfPropertyPane1.TabIndex = 3
-        WfPropertyPane1.Text = "WfPropertyPane1"
+        WfPropertyPane2.CollapseMode = Pane.PaneCollapseMode.Compact
+        WfPropertyPane2.Dock = DockStyle.Right
+        WfPropertyPane2.Location = New Point(218, 0)
+        WfPropertyPane2.Name = "WfPropertyPane2"
+        WfPropertyPane2.Size = New Size(246, 321)
+        WfPropertyPane2.TabIndex = 1
+        WfPropertyPane2.Text = "WfPropertyPane2"
         ' 
         ' Form1
         ' 
-        AutoScaleDimensions = New SizeF(7F, 15F)
+        AutoScaleDimensions = New SizeF(7F, 17F)
         AutoScaleMode = AutoScaleMode.Font
-        ClientSize = New Size(800, 490)
-        Controls.Add(WfPropertyPane1)
-        Controls.Add(NavigationView1)
-        Controls.Add(Button1)
+        ClientSize = New Size(464, 321)
+        Controls.Add(WfPropertyPane2)
+        Controls.Add(NavigationView2)
         Name = "Form1"
         Text = "Form1"
         ResumeLayout(False)
     End Sub
-    Friend WithEvents Button1 As Button
+
     Friend WithEvents NavigationView1 As NavView.NavigationView
     Friend WithEvents WfPropertyPane1 As Pane.WFPropertyPane
+    Friend WithEvents NavigationView2 As NavView.NavigationView
+    Friend WithEvents WfPropertyPane2 As Pane.WFPropertyPane
 
 End Class

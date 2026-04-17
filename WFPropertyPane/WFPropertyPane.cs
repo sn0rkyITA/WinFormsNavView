@@ -25,8 +25,8 @@ namespace Pane
     }
     public sealed class WFPropertyPane : Control
     {
-        private const int TopBarHeight = 34;
-        private const int SectionHeaderH = 28;
+        private const int TopBarHeight = 48;
+        private const int SectionHeaderH = 32;
         private const int CompactBarWidth = 36;
         private const int DefaultWidth = 240;
         private const int MinExpandedWidth = 120;
@@ -44,7 +44,7 @@ namespace Pane
         private Color _accentColor = ColAccentDefault;
         private bool _isExpanded = true;
         private int _expandedWidth = DefaultWidth;
-        private PaneCollapseMode _collapseMode = PaneCollapseMode.Compact;
+        private PaneCollapseMode _collapseMode = PaneCollapseMode.Minimal;
         private string? _activePluginId;
         private readonly Dictionary<string, bool> _sectionState = new();
         private readonly PaneSection _sezioneProps;
@@ -76,13 +76,13 @@ namespace Pane
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Font = new Font("Segoe UI", 8f, FontStyle.Regular),
+                Font = new Font("Segoe UI Variable Text", 12f, FontStyle.Bold),
                 ForeColor = ColHeaderText,
                 BackColor = Color.Transparent,
                 Padding = new Padding(10, 0, 0, 0),
                 Text = "Pannello"
             };
-            _btnCollapse = BuildIconButton("\u25B6", "Chiudi pannello");
+            _btnCollapse = BuildIconButton("\uE76C", "Chiudi pannello");
             _btnCollapse.Click += (_, _) => Collapse();
             _topBar = new Panel
             {
@@ -115,7 +115,7 @@ namespace Pane
                 AutoScroll = true,
                 BackColor = ColBodyBg
             };
-            _btnCompactExpand = BuildIconButton("\u25C0", "Espandi pannello");
+            _btnCompactExpand = BuildIconButton("\uE76B", "Espandi pannello");
             _btnCompactExpand.Click += (_, _) => Expand();
             _compactBar = new Panel
             {
@@ -134,6 +134,7 @@ namespace Pane
             AggiungiSezioneAFooter(_sezioneComandi);
         }
         public bool IsExpanded => _isExpanded;
+        public event EventHandler<PaneCollapseEventArgs>? CollapseStateChanged;
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int ExpandedWidth
         {
@@ -166,6 +167,16 @@ namespace Pane
                 if (_collapseMode == value) return;
                 _collapseMode = value;
                 ApplyCollapseMode();
+            }
+        }
+        public sealed class PaneCollapseEventArgs : EventArgs
+        {
+            public bool IsExpanded { get; }
+            public PaneCollapseMode CollapseMode { get; }
+            public PaneCollapseEventArgs(bool isExpanded, PaneCollapseMode collapseMode)
+            {
+                IsExpanded = isExpanded;
+                CollapseMode = collapseMode;
             }
         }
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -296,7 +307,7 @@ namespace Pane
                 AutoSize = false,
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft,
-                Font = new Font("Segoe UI", 8f, FontStyle.Regular),
+                Font = new Font("Segoe UI Variable Text", 8f, FontStyle.Bold),
                 ForeColor = ColHeaderText,
                 BackColor = Color.Transparent,
                 Padding = new Padding(10, 0, 0, 0),
@@ -309,10 +320,10 @@ namespace Pane
                 Width = 24,
                 Dock = DockStyle.Right,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font("Segoe UI", 9f),
+                Font = new Font("Segoe MDL2 Assets", 9f),
+                Text = "\uE70D",
                 ForeColor = ColChevron,
                 BackColor = Color.Transparent,
-                Text = "\u25BE",   // ▾
                 Cursor = Cursors.Hand
             };
             sezione.HeaderPanel.Height = SectionHeaderH;
@@ -326,6 +337,8 @@ namespace Pane
                 using var pen = new Pen(ColBorder, 0.5f);
                 e.Graphics.DrawLine(pen, 0, sezione.HeaderPanel.Height - 1,
                                          sezione.HeaderPanel.Width, sezione.HeaderPanel.Height - 1);
+                using var barPen = new Pen(_accentColor, 2f);
+                e.Graphics.DrawLine(barPen, 1, 4, 1, sezione.HeaderPanel.Height - 4);
             };
             void OnEnter(object? _, EventArgs __) => sezione.HeaderPanel.BackColor = ColSectionHover;
             void OnLeave(object? _, EventArgs __) => sezione.HeaderPanel.BackColor = ColSectionHeaderBg;
@@ -489,10 +502,8 @@ namespace Pane
         }
         private void AggiornaCompactBar()
         {
-            int barH = Math.Min(CompactBarWidth, ClientSize.Height);
-            int top = (ClientSize.Height - barH) / 2;
-            _compactBar.SetBounds(0, top, CompactBarWidth, barH);
-            _btnCompactExpand.SetBounds(0, 0, CompactBarWidth, barH);
+            _compactBar.SetBounds(0, 0, CompactBarWidth, CompactBarWidth);
+            _btnCompactExpand.SetBounds(0, 0, CompactBarWidth, CompactBarWidth);
         }
         private void AvviaAnimazionePannello(int targetWidth, Action? onComplete)
         {
@@ -510,6 +521,8 @@ namespace Pane
                     _paneAnimTimer.Dispose();
                     _paneAnimTimer = null;
                     onComplete?.Invoke();
+                    onComplete?.Invoke();
+                    CollapseStateChanged?.Invoke(this, new PaneCollapseEventArgs(_isExpanded, _collapseMode));
                 }
                 else
                 {
@@ -525,7 +538,7 @@ namespace Pane
             {
                 FlatStyle = FlatStyle.Flat,
                 Text = glyph,
-                Font = new Font("Segoe UI", 9f),
+                Font = new Font("Segoe MDL2 Assets", 9f),
                 Dock = DockStyle.Right,
                 Width = TopBarHeight,
                 Cursor = Cursors.Hand,
@@ -542,8 +555,8 @@ namespace Pane
         private static void AggiornaChevron(PaneSection sezione, bool espanso)
         {
             foreach (Control c in sezione.HeaderPanel.Controls)
-                if (c is Label lbl && (lbl.Text == "\u25BE" || lbl.Text == "\u25B8"))
-                    lbl.Text = espanso ? "\u25BE" : "\u25B8";  // ▾ / ▸
+                if (c is Label lbl && (lbl.Text == "\uE70D" || lbl.Text == "\uE70E"))
+                    lbl.Text = espanso ? "\uE70D" : "\uE70E";
         }
         private IEnumerable<PaneSection> TutteLeSezioni()
         {
