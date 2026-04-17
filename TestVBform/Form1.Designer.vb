@@ -24,7 +24,7 @@ Partial Class Form1
     Private Sub InitializeComponent()
         Button1 = New Button()
         NavigationView1 = New NavView.NavigationView()
-        WfPropertyPane1 = New STD.Controls.WFPropertyPane()
+        WfPropertyPane1 = New Pane.WFPropertyPane()
         SuspendLayout()
         ' 
         ' Button1
@@ -48,18 +48,17 @@ Partial Class Form1
         NavigationView1.Name = "NavigationView1"
         NavigationView1.PaneDisplayMode = NavView.PaneDisplayMode.LeftCompact
         NavigationView1.PaneWidth = 240
-        NavigationView1.Size = New Size(299, 400)
+        NavigationView1.Size = New Size(517, 400)
         NavigationView1.TabIndex = 2
         NavigationView1.Text = "NavigationView1"
         NavigationView1.Theme = NavView.NavViewTheme.Light
         ' 
         ' WfPropertyPane1
         ' 
-        WfPropertyPane1.BackColor = Color.FromArgb(CByte(30), CByte(30), CByte(28))
         WfPropertyPane1.Dock = DockStyle.Right
-        WfPropertyPane1.Location = New Point(488, 0)
+        WfPropertyPane1.Location = New Point(572, 0)
         WfPropertyPane1.Name = "WfPropertyPane1"
-        WfPropertyPane1.Size = New Size(312, 555)
+        WfPropertyPane1.Size = New Size(228, 555)
         WfPropertyPane1.TabIndex = 3
         WfPropertyPane1.Text = "WfPropertyPane1"
         ' 
@@ -77,6 +76,6 @@ Partial Class Form1
     End Sub
     Friend WithEvents Button1 As Button
     Friend WithEvents NavigationView1 As NavView.NavigationView
-    Friend WithEvents WfPropertyPane1 As STD.Controls.WFPropertyPane
+    Friend WithEvents WfPropertyPane1 As Pane.WFPropertyPane
 
 End Class

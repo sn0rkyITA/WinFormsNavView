@@ -12,6 +12,7 @@
 ' - NavViewFontResolver.ResolvedSource mostrato nella pagina Info
 
 Imports NavView
+Imports Pane
 
 Public Class Form1
 
@@ -31,6 +32,30 @@ Public Class Form1
         PopulateMenu()
         NavigationView1.FitPaneWidth()
         NavigationView1.Navigate(NavigationView1.MenuItems(0))
+
+
+
+        ' Imposta plugin attivo
+        WfPropertyPane1.ActivePluginId = "PluginDemo"
+
+        ' Popola sezioni (esempio)
+        Dim pg As New PropertyGrid()
+        pg.Dock = DockStyle.Fill
+        WfPropertyPane1.SetProprietà(pg)
+
+        Dim pnlCmd As New Panel() With {.Height = 80}
+        Dim btn As New Button() With {.Text = "Esegui", .Left = 10, .Top = 10}
+        pnlCmd.Controls.Add(btn)
+        WfPropertyPane1.SetComandi(pnlCmd)
+
+        ' Ripristina stato sezioni
+        WfPropertyPane1.RipristinaStatoSezioni()
+
+
+
+
+
+
     End Sub
 
     Private Sub ConfigureNavView()
@@ -617,6 +642,9 @@ Public Class Form1
         Next
     End Sub
 
+    Private Sub Button1_Click(sender As Object, e As EventArgs) Handles Button1.Click
+
+    End Sub
 End Class
 
 ' =============================================================================
