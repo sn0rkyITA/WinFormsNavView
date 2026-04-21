@@ -3,4 +3,5 @@
   <Project Path="NavView/NavView.csproj" />
   <Project Path="TestVBform/TestVBform.vbproj" Id="1796634a-2a49-4d0b-8dbc-685f98e85d4c" />
   <Project Path="WFPropertyPane/WFPropertyPane.csproj" Id="622ca6b9-c2a1-4c89-996e-a766e5351120" />
+  <Project Path="WinFormsFluentTabView/WinFormsFluentTabView.csproj" Id="c9fd1a26-383d-4088-85b9-ee2b8cea4c64" />
 </Solution>

@@ -1,4 +1,6 @@
 ﻿using System.ComponentModel;
+using System.Drawing;
+using System.Windows.Forms;
 
 namespace NavView
 {
@@ -65,12 +67,7 @@ namespace NavView
         private readonly ToolTip _toolTip = new ToolTip();
         private NavItem? _tooltipItem;
 
-        // Larghezza corrente del pane
-        private int _currentPaneWidth;
-
         // Lista piatta delle voci visibili con Bounds calcolati.
-        // I Bounds dei menu item sono in coordinate "virtuali" (prima dello scroll offset).
-        // I Bounds dei footer item sono in coordinate assolute (non scrollano).
         private readonly List<RendererItemInfo> _visibleItems = new();
 
         // Traccia se il mouse è sull'hamburger
@@ -81,21 +78,13 @@ namespace NavView
         // Scroll
         // -------------------------------------------------------------------------
 
-        /// <summary>Offset verticale corrente dello scroll (px, >= 0).</summary>
         private int _scrollOffset = 0;
-
-        /// <summary>Altezza virtuale totale di tutti i menu item (senza scroll).</summary>
         private int _menuVirtualHeight = 0;
-
-        /// <summary>Altezza dell'area visibile dedicata ai menu item.</summary>
         private int _menuViewportHeight = 0;
-
-        /// <summary>Bounds della scrollbar (thumb incluso) — aggiornato in BuildVisibleItems.</summary>
         private Rectangle _scrollBarBounds;
         private Rectangle _scrollThumbBounds;
         private bool _scrollBarVisible = false;
 
-        // Costanti scrollbar
         private const int ScrollBarWidth = 6;
         private const int ScrollBarMinThumbHeight = 20;
         private const int ScrollStep = NavViewMetrics.ItemHeight + NavViewMetrics.ItemMarginV;
@@ -117,11 +106,6 @@ namespace NavView
             set { _appTitle = value ?? string.Empty; Invalidate(); }
         }
 
-        /// <summary>
-        /// Header mostrato nell'area contenuto (solo InternalHost).
-        /// In ExternalHost ignorato visivamente; se AutoContentHeader è true,
-        /// viene aggiornato automaticamente dalla selezione ma non disegnato.
-        /// </summary>
         [Category("NavView")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string ContentHeader
@@ -130,11 +114,6 @@ namespace NavView
             set { _contentHeader = value ?? string.Empty; Invalidate(); }
         }
 
-        /// <summary>
-        /// Se true, ContentHeader viene aggiornato automaticamente al label
-        /// della voce selezionata (e svuotato alla deselezione).
-        /// Default: false — il chiamante gestisce ContentHeader manualmente.
-        /// </summary>
         [Category("NavView")]
         [DefaultValue(false)]
         public bool AutoContentHeader
@@ -143,16 +122,34 @@ namespace NavView
             set { _autoContentHeader = value; }
         }
 
-        /// <summary>
-        /// Modalità di gestione dell'area contenuto.
-        /// ExternalHost: nessuna area contenuto disegnata; SetContent non ha effetto.
-        /// </summary>
         [Category("NavView")]
         [DefaultValue(ContentMode.InternalHost)]
         public ContentMode ContentMode
         {
             get => _contentMode;
-            set { _contentMode = value; RecalcLayout(); }
+            set { _contentMode = value; NotifySizeChanged(); }
+        }
+
+        [Category("Layout")]
+        [Description("Se true, riserva spazio per un'area contenuto interna. Se false, il controllo si adatta al pane e supporta TableLayoutPanel.AutoSize.")]
+        [DefaultValue(false)]
+        public bool EnableInternalContent
+        {
+            get => _contentMode == ContentMode.InternalHost;
+            set
+            {
+                var target = value ? ContentMode.InternalHost : ContentMode.ExternalHost;
+                if (_contentMode == target) return;
+
+                _contentMode = target;
+                if (target == ContentMode.ExternalHost && _content != null)
+                {
+                    Controls.Remove(_content);
+                    _content = null;
+                }
+
+                NotifySizeChanged();
+            }
         }
 
         [Category("NavView")]
@@ -180,19 +177,7 @@ namespace NavView
             {
                 if (_autoSizePaneWidth) return;
                 _paneWidth = Math.Max(100, value);
-                RecalcLayout();
-            }
-        }
-
-        [Category("NavView")]
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        public bool AutoSizePaneWidth
-        {
-            get => _autoSizePaneWidth;
-            set
-            {
-                _autoSizePaneWidth = value;
-                if (value) RecalcPaneWidth();
+                NotifySizeChanged();
             }
         }
 
@@ -201,7 +186,7 @@ namespace NavView
         public int CompactPaneWidth
         {
             get => _compactWidth;
-            set { _compactWidth = Math.Max(NavViewMetrics.CompactPaneWidthMin, value); RecalcLayout(); }
+            set { _compactWidth = Math.Max(NavViewMetrics.CompactPaneWidthMin, value); NotifySizeChanged(); }
         }
 
         [Category("NavView")]
@@ -235,6 +220,26 @@ namespace NavView
             }
         }
 
+        [Category("NavView")]
+        [DefaultValue(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public bool AutoSizePaneWidth
+        {
+            get => _autoSizePaneWidth;
+            set
+            {
+                if (_autoSizePaneWidth == value) return;
+                _autoSizePaneWidth = value;
+                NotifySizeChanged();
+            }
+        }
+
+        private void OnCollectionChanged(object? sender, EventArgs e)
+        {
+            _scrollOffset = 0;
+            NotifySizeChanged();
+        }
+
         // -------------------------------------------------------------------------
         // Eventi pubblici
         // -------------------------------------------------------------------------
@@ -260,57 +265,98 @@ namespace NavView
             UpdateCursor();
             MenuItems.CollectionChanged += OnCollectionChanged;
             FooterMenuItems.CollectionChanged += OnCollectionChanged;
-            _currentPaneWidth = _compactWidth;
+            AutoSize = true;
+        }
+
+        // -------------------------------------------------------------------------
+        // Layout engine integration
+        // -------------------------------------------------------------------------
+        public override Size GetPreferredSize(Size proposedSize)
+        {
+            if (_contentMode == ContentMode.ExternalHost)
+            {
+                int width;
+                bool isOpenOrAlwaysExpanded = (_displayMode == PaneDisplayMode.Left || _isPaneOpen);
+
+                if (isOpenOrAlwaysExpanded)
+                {
+                    width = _autoSizePaneWidth ? CalculateAutoPaneWidth() : _paneWidth;
+                }
+                else
+                {
+                    width = _compactWidth;
+                }
+
+                int height = proposedSize.Height > 0 ? proposedSize.Height : Height;
+                return new Size(width, height);
+            }
+
+            return base.GetPreferredSize(proposedSize);
+        }
+
+        private int CalculateAutoPaneWidth()
+        {
+            int maxWidth = NavViewMetrics.CompactPaneWidthMin;
+            using var font = new Font("Segoe UI", NavViewMetrics.LabelFontSize, FontStyle.Regular, GraphicsUnit.Point);
+
+            void Measure(NavItemCollection col)
+            {
+                foreach (var item in col.Flatten())
+                {
+                    if (!item.IsVisible || item.IsSeparator || item.IsGroupHeader) continue;
+
+                    int iconArea = NavViewMetrics.IconPaddingLeft + NavViewMetrics.HamburgerSize
+                                 + NavViewMetrics.IconLabelGap + (item.Depth * NavViewMetrics.DepthIndent);
+                    int chevron = item.HasChildren ? NavViewMetrics.ChevronWidth : 0;
+                    int labelW = TextRenderer.MeasureText(item.Label, font).Width;
+                    int total = iconArea + labelW + chevron + NavViewMetrics.ItemMarginH;
+
+                    if (total > maxWidth) maxWidth = total;
+                }
+            }
+
+            Measure(MenuItems);
+            Measure(FooterMenuItems);
+            return maxWidth + NavViewMetrics.PaneWidthPadding;
+        }
+
+        // -------------------------------------------------------------------------
+        // Proprietà calcolata per la larghezza corrente (single source of truth)
+        // -------------------------------------------------------------------------
+        private int CurrentPaneWidth
+        {
+            get
+            {
+                if (_contentMode == ContentMode.InternalHost)
+                    return _paneWidth;
+
+                // ExternalHost
+                bool isOpenOrAlwaysExpanded = (_displayMode == PaneDisplayMode.Left || _isPaneOpen);
+
+                if (isOpenOrAlwaysExpanded)
+                {
+                    return _autoSizePaneWidth ? CalculateAutoPaneWidth() : _paneWidth;
+                }
+
+                // Stato compatto (chiuso): forza sempre la larghezza compatta
+                return _compactWidth;
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Notifica centralizzata per cambiamenti di dimensione
+        // -------------------------------------------------------------------------
+        private void NotifySizeChanged()
+        {
+            Invalidate();
+            Parent?.PerformLayout(this, "Bounds");
+            RecalcLayout();
         }
 
         // -------------------------------------------------------------------------
         // API pubblica
         // -------------------------------------------------------------------------
 
-        private void RecalcPaneWidth()
-        {
-            using var g = CreateGraphics();
-            using var font = new Font("Segoe UI", NavViewMetrics.LabelFontSize,
-                                      FontStyle.Regular, GraphicsUnit.Point);
-            int maxWidth = 0;
-            MeasureCollection(MenuItems, g, font, ref maxWidth);
-            MeasureCollection(FooterMenuItems, g, font, ref maxWidth);
-            _paneWidth = Math.Max(100, maxWidth + NavViewMetrics.PaneWidthPadding);
-            RecalcLayout();
-        }
-
-        public void FitPaneWidth()
-        {
-            RecalcPaneWidth();
-        }
-
-        private static void MeasureCollection(NavItemCollection collection,
-                                               Graphics g, Font font, ref int maxWidth)
-        {
-            foreach (var item in collection.Flatten())
-            {
-                if (!item.IsVisible || item.IsSeparator || item.IsGroupHeader) continue;
-
-                int iconArea = NavViewMetrics.IconPaddingLeft
-                             + NavViewMetrics.HamburgerSize
-                             + NavViewMetrics.IconLabelGap
-                             + item.Depth * NavViewMetrics.DepthIndent;
-
-                int chevron = item.HasChildren ? NavViewMetrics.ChevronWidth : 0;
-
-                int labelW = (int)Math.Ceiling(
-                    g.MeasureString(item.Label, font).Width);
-
-                int total = iconArea + labelW + chevron + NavViewMetrics.ItemMarginH;
-
-                if (total > maxWidth) maxWidth = total;
-            }
-        }
-
-        /// <summary>
-        /// Imposta il controllo contenuto interno. Solo efficace in ContentMode.InternalHost.
-        /// In ExternalHost la chiamata è ignorata.
-        /// </summary>
         public void SetContent(Control? control)
         {
             if (_contentMode == ContentMode.ExternalHost) return;
@@ -346,8 +392,7 @@ namespace NavView
         {
             CollapseCollection(MenuItems);
             CollapseCollection(FooterMenuItems);
-            BuildVisibleItems();
-            Invalidate();
+            NotifySizeChanged();
         }
 
         // -------------------------------------------------------------------------
@@ -381,14 +426,14 @@ namespace NavView
                 _isPaneOpen = false;
                 _paneOpenedByHamburger = false;
                 _scrollOffset = 0;
-                RecalcLayout();
+                NotifySizeChanged();
                 PaneClosed?.Invoke(this, EventArgs.Empty);
             }
             else
             {
                 _isPaneOpen = true;
                 _paneOpenedByHamburger = true;
-                RecalcLayout();
+                NotifySizeChanged();
                 PaneOpened?.Invoke(this, EventArgs.Empty);
             }
         }
@@ -399,16 +444,14 @@ namespace NavView
             {
                 _isPaneOpen = true;
                 _paneOpenedByHamburger = true;
-                _currentPaneWidth = _paneWidth;
             }
             else
             {
                 _isPaneOpen = false;
                 _paneOpenedByHamburger = false;
-                _currentPaneWidth = _compactWidth;
                 _scrollOffset = 0;
             }
-            RecalcLayout();
+            NotifySizeChanged();
         }
 
         // -------------------------------------------------------------------------
@@ -418,7 +461,6 @@ namespace NavView
         {
             BuildVisibleItems();
 
-            // In ExternalHost non c'è area contenuto da gestire
             if (_contentMode == ContentMode.InternalHost && _content != null)
             {
                 var ca = ContentAreaBounds;
@@ -434,6 +476,8 @@ namespace NavView
             Invalidate();
         }
 
+        protected override Size DefaultSize => new Size(_compactWidth, 300);
+
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
@@ -441,16 +485,14 @@ namespace NavView
             RecalcLayout();
         }
 
-        private Rectangle PaneBounds => new Rectangle(0, 0, _currentPaneWidth, Height);
+        // ✅ Usa CurrentPaneWidth, non _paneWidth
+        private Rectangle PaneBounds => new Rectangle(0, 0, CurrentPaneWidth, Height);
 
-        /// <summary>
-        /// In ExternalHost il pane occupa tutta la larghezza — ContentAreaBounds è vuoto.
-        /// </summary>
         private Rectangle ContentAreaBounds => _contentMode == ContentMode.ExternalHost
             ? Rectangle.Empty
             : new Rectangle(
-                _currentPaneWidth, 0,
-                Math.Max(0, Width - _currentPaneWidth), Height);
+                CurrentPaneWidth, 0,
+                Math.Max(0, Width - CurrentPaneWidth), Height);
 
         // -------------------------------------------------------------------------
         // Costruzione lista voci visibili
@@ -463,17 +505,14 @@ namespace NavView
                                       && !_isPaneOpen
                                       && HasAnyExpanded(MenuItems, FooterMenuItems);
 
-            _currentPaneWidth = _displayMode == PaneDisplayMode.Left
-                ? _paneWidth
-                : (_isPaneOpen || hasExpandedInCompact) ? _paneWidth : _compactWidth;
+            // ✅ FIX CRITICO: usa variabile locale, NON sovrascrivere _paneWidth
+            int paneW = CurrentPaneWidth;
 
-            int paneW = _currentPaneWidth;
             bool showLabels = _isPaneOpen
                            || _displayMode == PaneDisplayMode.Left
                            || hasExpandedInCompact;
 
             bool scrollActive = showLabels;
-
             int paneHeight = Math.Max(0, Height);
 
             // ---- Footer: sempre fisso in basso ---------------------------------
@@ -517,8 +556,6 @@ namespace NavView
                 : paneHeight - 4;
 
             _menuViewportHeight = Math.Max(0, menuAreaBottom - menuAreaTop);
-
-            // ---- Menu item: coordinate virtuali --------------------------------
             _menuVirtualHeight = MeasureVirtualHeight(MenuItems, showLabels);
 
             if (scrollActive)
@@ -556,7 +593,7 @@ namespace NavView
             // ---- Hamburger bounds ----------------------------------------------
             int hambX = (_isPaneOpen || _displayMode == PaneDisplayMode.Left)
                 ? NavViewMetrics.HamburgerPadding
-                : (_currentPaneWidth - NavViewMetrics.HamburgerSize) / 2;
+                : (paneW - NavViewMetrics.HamburgerSize) / 2;
 
             _hamburgerBounds = new Rectangle(
                 hambX,
@@ -608,7 +645,6 @@ namespace NavView
                   : item.IsGroupHeader ? NavViewMetrics.GroupHeaderHeight
                                        : NavViewMetrics.ItemHeight;
 
-            // Determina il Kind corretto
             RendererItemKind kind;
             if (item.IsSeparator)
                 kind = RendererItemKind.Separator;
@@ -622,12 +658,10 @@ namespace NavView
             bool include;
             if (isFooter)
             {
-                // Footer item: sempre inclusi, coordinate assolute
                 include = true;
             }
             else
             {
-                // Menu item: includi solo se (almeno parzialmente) nel viewport
                 int menuAreaTop = NavViewMetrics.HeaderHeight;
                 int menuAreaBottom = menuAreaTop + _menuViewportHeight;
                 bool completelyAbove = y + h <= menuAreaTop;
@@ -735,7 +769,6 @@ namespace NavView
         {
             var g = e.Graphics;
 
-            // In ExternalHost non si disegna nulla fuori dal pane
             if (_contentMode == ContentMode.InternalHost)
             {
                 var ca = ContentAreaBounds;
@@ -748,8 +781,8 @@ namespace NavView
                 if (_autoContentHeader && !string.IsNullOrWhiteSpace(_contentHeader))
                 {
                     var chBounds = new Rectangle(
-                        _currentPaneWidth, 0,
-                        Width - _currentPaneWidth,
+                        CurrentPaneWidth, 0,
+                        Width - CurrentPaneWidth,
                         NavViewMetrics.ContentHeaderHeight);
                     _renderer.DrawContentHeader(g, chBounds, _contentHeader);
                 }
@@ -848,8 +881,7 @@ namespace NavView
                     }
                 }
 
-                BuildVisibleItems();
-                RecalcLayout();
+                NotifySizeChanged();
                 return;
             }
 
@@ -860,7 +892,7 @@ namespace NavView
         {
             base.OnMouseWheel(e);
 
-            if (e.X > _currentPaneWidth) return;
+            if (e.X > CurrentPaneWidth) return;
             if (!_scrollBarVisible) return;
 
             int steps = e.Delta / SystemInformation.MouseWheelScrollDelta;
@@ -896,8 +928,7 @@ namespace NavView
                         _selectedItem = ancestor;
                 }
 
-                BuildVisibleItems();
-                RecalcLayout();
+                NotifySizeChanged();
                 SelectionChanged?.Invoke(this,
                     new NavSelectionChangedEventArgs(null, prev));
                 return;
@@ -921,8 +952,7 @@ namespace NavView
                     _selectedItem = ancestor;
             }
 
-            BuildVisibleItems();
-            RecalcLayout();
+            NotifySizeChanged();
             item.ExecuteAction?.Invoke(item);
             SelectionChanged?.Invoke(this,
                 new NavSelectionChangedEventArgs(item, previous));
@@ -933,7 +963,7 @@ namespace NavView
         // -------------------------------------------------------------------------
         private NavItem? HitTest(Point p)
         {
-            if (p.X > _currentPaneWidth) return null;
+            if (p.X > CurrentPaneWidth) return null;
             if (_hamburgerBounds.Contains(p)) return null;
             if (_scrollBarVisible && _scrollBarBounds.Contains(p)) return null;
 
@@ -942,7 +972,6 @@ namespace NavView
 
             foreach (var info in _visibleItems)
             {
-                // StructuralSeparator: Source è null, non è cliccabile
                 if (info.Kind == RendererItemKind.StructuralSeparator) continue;
 
                 if (info.Kind == RendererItemKind.MenuItem || info.Kind == RendererItemKind.Separator || info.Kind == RendererItemKind.GroupHeader)
@@ -964,14 +993,6 @@ namespace NavView
             foreach (var item in items)
                 if (item.Id == id) return item;
             return null;
-        }
-
-        private void OnCollectionChanged(object? sender, EventArgs e)
-        {
-            _scrollOffset = 0;
-            if (_autoSizePaneWidth) RecalcPaneWidth();
-            BuildVisibleItems();
-            Invalidate();
         }
 
         private void UpdateCursor() => Cursor = Cursors.Default;

@@ -23,11 +23,21 @@ namespace Pane
         }
         public bool IsVisible => Contenuto is not null;
     }
+    public sealed class PaneCollapseEventArgs : EventArgs
+    {
+        public bool IsExpanded { get; }
+        public PaneCollapseMode CollapseMode { get; }
+        public PaneCollapseEventArgs(bool isExpanded, PaneCollapseMode collapseMode)
+        {
+            IsExpanded = isExpanded;
+            CollapseMode = collapseMode;
+        }
+    }
     public sealed class WFPropertyPane : Control
     {
         private const int TopBarHeight = 48;
         private const int SectionHeaderH = 32;
-        private const int CompactBarWidth = 36;
+        private const int CompactBarWidth = 48;
         private const int DefaultWidth = 240;
         private const int MinExpandedWidth = 120;
         private const int AnimIntervalMs = 10;
@@ -133,8 +143,12 @@ namespace Pane
             AggiungiSezioneAScrollPanel(_sezioneProps);
             AggiungiSezioneAFooter(_sezioneComandi);
         }
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool IsExpanded => _isExpanded;
-        public event EventHandler<PaneCollapseEventArgs>? CollapseStateChanged;
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public event EventHandler? CollapseStateChanged;
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int ExpandedWidth
         {
@@ -167,16 +181,6 @@ namespace Pane
                 if (_collapseMode == value) return;
                 _collapseMode = value;
                 ApplyCollapseMode();
-            }
-        }
-        public sealed class PaneCollapseEventArgs : EventArgs
-        {
-            public bool IsExpanded { get; }
-            public PaneCollapseMode CollapseMode { get; }
-            public PaneCollapseEventArgs(bool isExpanded, PaneCollapseMode collapseMode)
-            {
-                IsExpanded = isExpanded;
-                CollapseMode = collapseMode;
             }
         }
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -520,7 +524,6 @@ namespace Pane
                     _paneAnimTimer!.Stop();
                     _paneAnimTimer.Dispose();
                     _paneAnimTimer = null;
-                    onComplete?.Invoke();
                     onComplete?.Invoke();
                     CollapseStateChanged?.Invoke(this, new PaneCollapseEventArgs(_isExpanded, _collapseMode));
                 }

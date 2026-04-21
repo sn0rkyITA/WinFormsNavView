@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NavView\NavView.csproj" />
     <ProjectReference Include="..\WFPropertyPane\WFPropertyPane.csproj" />
+    <ProjectReference Include="..\WinFormsFluentTabView\WinFormsFluentTabView.csproj" />
   </ItemGroup>
 
   <ItemGroup>
